@@ -1,0 +1,13 @@
+{
+  "name": "patcher2070",
+  "version": "1.0.0",
+  "description": "Modding tools for Anno 2070",
+  "main": "./src/index.js",
+  "type": "module",
+  "author": "LordVonAdel",
+  "license": "MIT",
+  "private": true,
+  "dependencies": {
+    "dxtn": "^1.0.0"
+  }
+}
