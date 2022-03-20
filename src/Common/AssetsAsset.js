@@ -14,11 +14,25 @@ export default class AssetsAsset extends XMLAsset {
     this.groups = [];
   }
 
+  generate() {
+    this.xml = new XMLElement("Root");
+    const assetList = new XMLElement("AssetList");
+    this.xml.addChild(assetList);
+    const rootGroup = new AssetGroup();
+    rootGroup.name = "Main";
+    assetList.addChild(rootGroup.xml);
+
+    this.groups = [
+      rootGroup
+    ];
+  }
+
   readData(data) {
     super.readData(data);
     const assetList = this.xml.findChild("AssetList") || this.xml.findChild("Group");
     const groups = assetList.findChild("Groups").getChildrenOfType("Group");
 
+    this.groups.length = 0;
     for (let group of groups) {
       this.groups.push(new AssetGroup(group, null));
     }
@@ -34,6 +48,22 @@ export default class AssetsAsset extends XMLAsset {
       assets.push(...group.getAssets());
     }
     return assets;
+  }
+
+  /**
+   * @returns AssetGroup[]
+   */
+  getAllGroups() {
+    const groups = [...this.groups];
+    const out = [];
+
+    while (groups.length > 0) {
+      const group = groups.shift();
+      out.push(group);
+      groups.push(...group.subGroups);
+    }
+
+    return out;
   }
 
   /**
@@ -54,7 +84,8 @@ export default class AssetsAsset extends XMLAsset {
    * @param {String} name Name of the asset. Developer only, not shown in the final game!
    * @returns 
    */
-  createAsset(group, name = null) {
+  createAsset(name = null, group = null) {
+    if (this.groups.length <= 0) throw new Error("File not initialized");
     if (!name) name = "js_" + (nextAutomatedAssetIndex++);
 
     const asset = new Asset(group);
@@ -63,6 +94,8 @@ export default class AssetsAsset extends XMLAsset {
     asset.Standard.CreationTime = (new Date()).toISOString().split('T')[0];
     asset.Standard.LastChangeUser = "Anno2070js";
     asset.Standard.LastChangeTime = asset.Standard.CreationTime;
+
+    if (!group) group = this.groups[0];
 
     group.addAsset(asset);
 
@@ -77,16 +110,43 @@ export default class AssetsAsset extends XMLAsset {
     }
     return group;
   }
+
+  /**
+   * Merges assets from another assets file into this one
+   * @param {AssetsAsset} otherFile 
+   */
+  merge(otherFile) {
+    const otherGroups = otherFile.getAllGroups();
+    const thisGroups = this.getAllGroups();
+    
+    for (let otherGroup of otherGroups) {
+      const thisGroup = thisGroups.find(group => group.path.endsWith(otherGroup.path)) ?? thisGroups[0];
+      for (let asset of otherGroup.assets) {
+        thisGroup.addAsset(asset);
+      }
+    }
+  }
 }
 
 class AssetGroup {
 
-  constructor(xml, parent) {
+  constructor(xml = null, parent = null) {
+    if (!xml) {
+      xml = new XMLElement("Group");
+      xml.setInlineContent("unnamed", "Name");
+      xml.addChild(new XMLElement("Assets"));
+      xml.addChild(new XMLElement("Groups"));
+    }
+
     this.xml = xml;
     this.parent = parent;
-    this.name = this.xml.getInlineContent("name");
     this.subGroups = [];
+
+    /**
+     * @type {Asset[]}
+     */
     this.assets = [];
+
     if (this.xml.findChild("Groups")) {
       const subGroupsXML = this.xml.findChild("Groups").getChildrenOfType("Group");
       for (let group of subGroupsXML) {
@@ -122,8 +182,19 @@ class AssetGroup {
     return this.parent ? this.parent.path + "." + this.name : this.name;
   }
 
+  get name() {
+    return this.xml.getInlineContent("Name");
+  }
+
+  set name(value) {
+    this.xml.setInlineContent(value, "Name");
+  }
+
+  /**
+   * @param {Asset} asset 
+   */
   addAsset(asset) {
-    this.xml.findChild("Assets").addChild(asset.xml);
+    this.xml.findChild("Assets", 0, true).addChild(asset.xml);
     this.assets.push(asset);
   }
 
@@ -141,7 +212,6 @@ class AssetGroup {
 
     return null;
   }
-
 }
 
 /**

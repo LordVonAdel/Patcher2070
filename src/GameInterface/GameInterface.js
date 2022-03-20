@@ -190,10 +190,16 @@ export default class GameInterface {
   async getAssets() {
     if (this.assets) return this.assets;
 
-    const file = await this.getGameFile("data/config/game/assets.xml");
-    if (!file) throw new Error("No assets file found!");
+    const mainFile = await this.getGameFile("data/config/game/assets.xml");
+    if (!mainFile) throw new Error("No assets file found!");
     this.assets = new Assets();
-    this.assets.readData(file);
+    this.assets.readData(mainFile);
+
+    const addonFile = await this.getGameFile("addondata/config/balancing/addon_01_assets.xml");
+    const addonAssets = new Assets();
+    addonAssets.readData(addonFile);
+    this.assets.merge(addonAssets);
+
     return this.assets;
   }
 
