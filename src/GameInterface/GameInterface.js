@@ -84,6 +84,8 @@ export default class GameInterface {
      * @private
      */
     this.properties = null;
+
+    this.isAddonInstalled = true;
   }
 
   async init() {
@@ -195,10 +197,12 @@ export default class GameInterface {
     this.assets = new Assets();
     this.assets.readData(mainFile);
 
-    const addonFile = await this.getGameFile("addondata/config/balancing/addon_01_assets.xml");
-    const addonAssets = new Assets();
-    addonAssets.readData(addonFile);
-    this.assets.merge(addonAssets);
+    if (this.isAddonInstalled) {
+      const addonFile = await this.getGameFile("addondata/config/balancing/addon_01_assets.xml");
+      const addonAssets = new Assets();
+      addonAssets.readData(addonFile);
+      this.assets.merge(addonAssets);
+    }
 
     return this.assets;
   }

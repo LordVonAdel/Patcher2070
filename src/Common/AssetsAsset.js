@@ -29,13 +29,20 @@ export default class AssetsAsset extends XMLAsset {
 
   readData(data) {
     super.readData(data);
-    const assetList = this.xml.findChild("AssetList") || this.xml.findChild("Group");
-    const groups = assetList.findChild("Groups").getChildrenOfType("Group");
+    const assetList = this.xml.findChild("AssetList");
 
-    this.groups.length = 0;
-    for (let group of groups) {
-      this.groups.push(new AssetGroup(group, null));
+    if (assetList) {
+      const groups = assetList.findChild("Groups").getChildrenOfType("Group");
+      this.groups.length = 0;
+      for (let group of groups) {
+        this.groups.push(new AssetGroup(group, null));
+      }
+      return;
     }
+
+    this.groups = [
+      new AssetGroup(this.xml.findChild("Group"), null)
+    ]
   }
 
   /**
@@ -228,6 +235,9 @@ export class Asset {
 
     this.xml = xml;
 
+    /**
+     * @type {XMLElement}
+     */
     this.values = this.xml.findChild("Values", 0, true);
   }
 
