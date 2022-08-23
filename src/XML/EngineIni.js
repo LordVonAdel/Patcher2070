@@ -7,7 +7,7 @@ export default class EngineIni extends XMLAsset {
    * @param {EngineIniKey} key 
    */
   getValue(key) {
-    this.xml.findChild("InitFile").getInlineContent(key);
+    return this.xml.findChild("InitFile").getInlineContent(key);
   }
 
   /**
@@ -22,6 +22,11 @@ export default class EngineIni extends XMLAsset {
     return Path.join(process.env.APPDATA, "Ubisoft/Anno 2070/Config/Engine.ini")
   }
 
+ /*
+  * @typedef {string} EngineIniKey
+  * @readonly
+  * @enum {string} EngineIniKey
+  */
   static KEYS = {
     ScreenXSize: "ScreenXSize",
     ScreenYSize: "ScreenYSize",

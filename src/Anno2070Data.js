@@ -4,6 +4,7 @@
 
 /**
  * Fertilities
+ * @typedef {string} Anno2070.Fertility
  * @readonly
  * @enum {string} Anno2070.Fertility
  */
@@ -34,6 +35,7 @@ export const Fertility = {
 
 /**
  * Products
+ * @typedef {string} Anno2070.Product
  * @readonly
  * @enum {string} Anno2070.Product
  */
@@ -118,6 +120,7 @@ export const Product = {
 
 /**
  * I thinks these are the milestones for getting new build options
+ * @typedef {string} Anno2070.Product
  * @readonly
  * @enum {string} Anno2070.Product
  */
@@ -214,6 +217,7 @@ export const IntermediateLevel = {
 
 /**
  * Building GUIDs
+ * @typedef {string} Anno2070.BuildingGUID
  * @readonly
  * @enum {Number} Anno2070.BuildingGUID
  */
@@ -455,3 +459,59 @@ export const Building = {
   "town_center_supporter": 10040,
   "town_center_rival": 10263
 };
+
+/**
+ * Effect names. Used in abo files.
+ * @readonly
+ * @enum {string} Anno2070.Effects
+ */
+export const Effects = {
+  "SmallExplosion": "SmallExplosion"
+}
+
+/**
+ * Post effect names for sequences.
+ * @readonly
+ * @enum {string} Anno2070.PostEffect
+ */
+export const PostEffect = {
+  MotionBlur: "SEQ_CAMERA_MOTIONBLUR",
+  DepthOfField: "SEQ_DOF",
+  Vignette: "SEQ_VIGNETTE",
+  DepthOfFieldFixedFocus: "SEQ_DOF_FIXEDFOCUS"
+}
+
+/**
+ * Predefined Screen fade paths.
+ * @readonly
+ * @enum {string} Anno2070.ScreenFade
+ */
+export const ScreenFades = {
+  FastBlackFadeIn: "data\\config\\gui\\sequences\\FastBlackFadeIn.xml",
+  BlackScreenFade: "data\\config\\gui\\sequences\\blackscreenfade.xml"
+}
+
+/**
+ * Keyboard keys.
+ * @readonly
+ * @enum {string} Anno2070.KeyboardKey
+ */
+export const KeyboardKey = {
+  Numpad0: 96,
+  Escape: 27
+}
+
+/**
+ * Light profiles used by islands 
+ * @typedef {string} Anno2070.LightProfile
+ * @readonly
+ * @enum {string} Anno2070.LightProfile
+ */
+export const LightProfile = {
+  North: "North",
+  North_RivalIsland: "North_RivalIsland",
+  Underwater_Island_02: "Underwater_Island_02",
+  M14_Underwater_Island_Dark: "M14_Underwater_Island_Dark",
+  M14_Underwater_Island_Dark_02: "M14_Underwater_Island_Dark_02",
+  Underwater_Void: "Underwater_Void"
+}

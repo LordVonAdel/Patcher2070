@@ -16,6 +16,9 @@ export default class XMLAsset extends FileAsset {
     this.xml = parser.parse(data);
   }
 
+  /**
+   * @returns {Buffer} content
+   */
   writeData() {
     if (!this.xml) throw new Error("Asset not loaded/initialized");
     return this.xml.toBuffer(true);
