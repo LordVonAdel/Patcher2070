@@ -103,21 +103,42 @@ export default class StringAPI {
       this.ranges = [];
       const localFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation.xml"));
       if (!localFile) throw new Error("No localisation index found!");
-
-      const data = await this.gameInterface.getGameFile(localFile.filepath);
-      const xml = XMLParser.parse(data);
-
-      const texts = xml.findChild("Localisation").getChildrenOfType("Text");
-      for (let text of texts) {
-        this.ranges.push({
-          min: text.getInlineContent("GUIDRangeMin"),
-          max: text.getInlineContent("GUIDRangeMax"),
-          filename: text.getInlineContent("Filename").toLowerCase()
-        });
+      await this.fillIndex(localFile.filepath);
+    
+      // It looks like addon localization overwrites every entry of localization. But we merge it just to be sure and be compatible with eventual pre modded games.
+      if (this.gameInterface.isAddonInstalled) {
+        const addonLocalFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation_addon.xml"));
+        if (!addonLocalFile) throw new Error("No addon localisation index found!");
+        await this.fillIndex(addonLocalFile.filepath);
       }
     }
 
     return this.ranges.find(range => range.min <= guid && range.max >= guid)?.filename;
+  }
+
+  /**
+   * @private
+   * @param {String} filename Path to localisation.xml
+   */
+  async fillIndex(filename) {
+    const data = await this.gameInterface.getGameFile(filename);
+    const xml = XMLParser.parse(data);
+
+    const texts = xml.findChild("Localisation").getChildrenOfType("Text");
+    for (let text of texts) {
+      const filename = text.getInlineContent("Filename").toLowerCase();
+      const range = this.ranges.find(range => range.filename === filename);
+      if (range) {
+        range.min = Number(text.getInlineContent("GUIDRangeMin"));
+        range.max = Number(text.getInlineContent("GUIDRangeMax"));
+      } else {
+        this.ranges.push({
+          min: Number(text.getInlineContent("GUIDRangeMin")),
+          max: Number(text.getInlineContent("GUIDRangeMax")),
+          filename: text.getInlineContent("Filename").toLowerCase()
+        });
+      }
+    }
   }
 
   /**
@@ -127,7 +148,7 @@ export default class StringAPI {
    */
   async updateCSSClass(classname, content) {
     let fileContent = (await this.gameInterface.getGameFile("data/config/gui/textstyles.css")).toString();
-    if (!fileContent) throw new Error(`CSS file ${classname} not found!`);
+    if (!fileContent) throw new Error(`CSS file not found!`);
 
     // Remove class if it already exists
     const existingClassIndex = fileContent.indexOf(`.${classname}`);

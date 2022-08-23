@@ -51,9 +51,9 @@ export default class BuildMenu {
     for (let buildingItem of productionChainEntries) {
       out.push({
         buildingGUID: buildingItem.getInlineContent("buildingGUID"),
-        tooltipNormalGUID: "1" + buildingItem.getInlineContent("BuildingButtonTooltip"),
-        tooltipDisabledGUID: "2" + buildingItem.getInlineContent("BuildingButtonTooltip"),
-        tooltipPressedGUID: "3" + buildingItem.getInlineContent("BuildingButtonTooltip"),
+        tooltipNormalGUID:   10000000 + Number(buildingItem.getInlineContent("BuildingButtonTooltip")),
+        tooltipDisabledGUID: 20000000 + Number(buildingItem.getInlineContent("BuildingButtonTooltip")),
+        tooltipPressedGUID:  30000000 + Number(buildingItem.getInlineContent("BuildingButtonTooltip")),
         hasSubitems: false
       });
     }
