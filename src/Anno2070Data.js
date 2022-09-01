@@ -466,7 +466,8 @@ export const Building = {
  * @enum {string} Anno2070.Effects
  */
 export const Effects = {
-  "SmallExplosion": "SmallExplosion"
+  SmallExplosion: "SmallExplosion",
+  Explosion: "Explosion"
 }
 
 /**
@@ -478,7 +479,8 @@ export const PostEffect = {
   MotionBlur: "SEQ_CAMERA_MOTIONBLUR",
   DepthOfField: "SEQ_DOF",
   Vignette: "SEQ_VIGNETTE",
-  DepthOfFieldFixedFocus: "SEQ_DOF_FIXEDFOCUS"
+  DepthOfFieldFixedFocus: "SEQ_DOF_FIXEDFOCUS",
+  BlackWhite: "SEQ_SILVER"
 }
 
 /**
@@ -498,7 +500,12 @@ export const ScreenFades = {
  */
 export const KeyboardKey = {
   Numpad0: 96,
-  Escape: 27
+  Numpad1: 97,
+  Numpad2: 98,
+  Numpad3: 99,
+  Numpad4: 100,
+  Escape: 27,
+  F11: 122
 }
 
 /**
@@ -514,4 +521,15 @@ export const LightProfile = {
   M14_Underwater_Island_Dark: "M14_Underwater_Island_Dark",
   M14_Underwater_Island_Dark_02: "M14_Underwater_Island_Dark_02",
   Underwater_Void: "Underwater_Void"
+}
+
+/**
+ * Light profiles used by islands 
+ * @typedef {string} Anno2070.Happiness
+ * @readonly
+ * @enum {string} Anno2070.Happiness
+ */
+export const Happiness = {
+  neutral: "neutral",
+  very_happy: "very_happy"
 }
