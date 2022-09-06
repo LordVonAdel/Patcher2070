@@ -14,11 +14,19 @@ What the API can do at the moment:
 - Extract icons as single files
 - Add/Change style classes for tooltips
 - Change values in Engine.ini
+- Read the structure of the build menu
+- Detect if the addon is installed
+- Read terrain data of islands
+- Parse/Write ABO and ABL files
 
 What it can't do at the moment:
 - Add products (wares)
-- Add items
+- Add/change/remove items
 - Add/remove assets (buildings, vehicles, etc.)
 - Add/Change/Remove islands
 - Add/Change/Remove missions
-- Add 3d Models
+- Add/Change/Remove quests
+- Add/Change/Remove maps
+- Add/Change 3d Models
+- Change the structure of the build menu
+- Change UI Layouts
