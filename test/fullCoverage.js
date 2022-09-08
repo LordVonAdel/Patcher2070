@@ -20,14 +20,40 @@ const stats = {
   ddsFailed: 0
 }
 
-const showOnlyFails = true;
+const showOnlyFails = false;
 
 fs.readdir(contentFolderFilePath, async (err, files) => {
   for (let file of files) {
+    if (file.includes(".backup")) continue;
     await testRDA(path.join(contentFolderFilePath, file));
   }
   console.table(stats);
 });
+
+const fileTypeTests = {
+  "RDM": {
+    extension: ".rdm",
+    test(data) {
+      const rdm = new RDMAsset();
+      rdm.readData(data);
+    }
+  },
+  "ISD": {
+    ignore: true,
+    extension: ".isd",
+    test(data) {
+      const isd = new ISDAsset();
+      isd.readData(data);
+    }
+  },
+  "DDS": {
+    extension: ".dds",
+    test(data) {
+      const asset = new DDSAsset();
+      asset.readData(data);
+    }
+  }
+}
 
 async function testRDA(path) {
   const reader = new RDAAsset();
@@ -36,47 +62,28 @@ async function testRDA(path) {
     await reader.readFile(path);
     const index = reader.getIndex();
 
-    // RDM
-    const models = index.filter(entry => entry.endsWith(".rdm"));
-    for (let model of models) {
-      const modelData = reader.extractFile(model);
-      const rdm = new RDMAsset();
-      try {
-        rdm.readData(modelData);
-        stats.modelsParsed++;
-      } catch (e) {
-        console.log("\x1b[91mError reading model:", model, e.message, "\x1b[0m");
-        stats.modelsFailed++;
+    for (let testType in fileTypeTests) {
+      const test = fileTypeTests[testType];
+      if (test.ignore) continue;
+
+      const invalidStat = testType + "_invalid";
+      const validStat = testType + "_valid";
+
+      if (!(invalidStat in stats)) { stats[invalidStat] = 0; stats[validStat] = 0; }
+
+      const files = index.filter(entry => entry.endsWith(test.extension));
+      for (const file of files) {
+        try {
+          const data = reader.extractFile(file);
+          test.test(data);
+          stats[validStat]++;
+        } catch (e) {
+          console.log("\x1b[91mFile is invalid:", file, e.message, "\x1b[0m");
+          stats[invalidStat]++;
+        }
       }
     }
 
-    // ISD
-    const islands = index.filter(entry => entry.endsWith(".isd"));
-    for (let island of islands) {
-      const islandData = reader.extractFile(island);
-      const asset = new ISDAsset();
-      try {
-        asset.readData(islandData);
-        stats.islandsParsed++;
-      } catch (e) {
-        console.log("\x1b[91mError reading island:", island, e.message, "\x1b[0m");
-        stats.islandsFailed++;
-      }
-    }
-
-    // DDS
-    const textures = index.filter(entry => entry.endsWith(".dds"));
-    for (let dds of textures) {
-      const ddsData = reader.extractFile(dds);
-      const asset = new DDSAsset();
-      try {
-        asset.readData(ddsData);
-        stats.ddsParsed++;
-      } catch (e) {
-        console.log("\x1b[91mError reading texture:", dds, e.message, "\x1b[0m");
-        stats.ddsFailed++;
-      }
-    }
 
     stats.rdaParsed++;
   } catch (e) {
