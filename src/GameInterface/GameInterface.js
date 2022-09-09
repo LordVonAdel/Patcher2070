@@ -10,6 +10,7 @@ import DatasetsAsset from './../XML/DatasetsAsset.js';
 import EngineIni from '../XML/EngineIni.js';
 import StringAPI from './StringAPI.js';
 import IconsAPI from './IconsAPI.js';
+import LevelAPI from "./LevelAPI.js";
 import GamePropertiesAsset from '../XML/GamePropertiesAsset.js';
 
 export default class GameInterface {
@@ -61,6 +62,11 @@ export default class GameInterface {
     this.iconsAPI = new IconsAPI(this);
 
     /**
+     * @type {LevelAPI}
+     */
+    this.levelAPI = new LevelAPI(this);
+
+    /**
      * @private
      */
     this.assets = null;
@@ -86,11 +92,20 @@ export default class GameInterface {
     this.properties = null;
 
     this.isAddonInstalled = true;
+
+    /**
+     * @type {LangID}
+     */
+    this.installedLanguage = null;
   }
 
   async init() {
     await this.checkGameDirectory();
     await this.buildFileIndex();
+
+    const engineIni = await this.getEngineIni();
+    this.installedLanguage = engineIni.getValue("LanguageTAG");
+    if (!this.installedLanguage) throw new Error("Can't detect installed language!");
   }
 
   async checkGameDirectory() {
@@ -104,24 +119,19 @@ export default class GameInterface {
   }
 
   async buildFileIndex() {
-    const rdaFiles = (await fs.promises.readdir(Path.join(this.gameDirectory, "maindata")))
-      .filter(filename => filename.endsWith(".rda"));
+    const maindataDirectory = Path.join(this.gameDirectory, "maindata");
+    const rdaFiles = (await fs.promises.readdir(maindataDirectory)).filter(filename => filename.endsWith(".rda"));
 
-    const baseFiles = rdaFiles.filter(filename => !filename.startsWith("patch"));
-    const patchFiles = rdaFiles.filter(filename => filename.startsWith("patch")).sort();
- 
-    // Read from prepatch if available to prevent double reads
-    const patchedPath = Path.join(this.gameDirectory, "maindata", "patch8.rda.prepatch");
-    const stat = await fs.promises.stat(patchedPath).catch(() => {});
-    if (stat) {
-      patchFiles.pop(); // Remove modded patch 8
-      patchFiles.push(patchedPath); // Add original patch 8
+    for (let i in rdaFiles) {
+      rdaFiles[i] = await this.backupSystemFile(Path.join(maindataDirectory, rdaFiles[i]));
     }
+
+    const baseFiles = rdaFiles.filter(filename => !filename.includes("patch"));
+    const patchFiles = rdaFiles.filter(filename => filename.includes("patch")).sort();
 
     // Move patch files to end, so they override base files.
     baseFiles.push(...patchFiles);
-    for (let file of baseFiles) {
-      const filepath = Path.join(this.gameDirectory, "maindata", file);
+    for (let filepath of baseFiles) {      
       const rda = new RDAAsset();
 
       try {
@@ -135,9 +145,11 @@ export default class GameInterface {
 
       const rdaIndex = rda.getIndex();
       for (let packedFile of rdaIndex) {
-        this.fileIndex[packedFile] = new FileIndex(packedFile, filepath);
+        this.fileIndex[packedFile] = new FileIndex(packedFile, filepath.replace(".backup", ""));
       }
     }
+
+    this.isAddonInstalled = baseFiles.some(filename => filename.includes("addon0.rda"));
   }
 
   doesFileExist(filepath) {
@@ -241,18 +253,6 @@ export default class GameInterface {
    * Warning: This function modifies installation files of the game!
    */
   async patch() {
-    const patch8Path = Path.join(this.gameDirectory, "maindata", "patch8.rda");
-
-    // Backup patch8.rda
-    await fs.promises.stat(patch8Path + ".prepatch").catch(() => {
-      return fs.promises.copyFile(patch8Path, patch8Path + ".prepatch");
-    });
-
-    const baseRDA = new RDAAsset();
-    await baseRDA.readFile(Path.join(this.gameDirectory, "maindata", "patch8.rda.prepatch"));
-
-    const modifiedFiles = [];
-
     if (this.assets) {
       this.fileIndex["data/config/game/assets.xml"].updateContent(this.assets.writeData());
     }
@@ -265,17 +265,52 @@ export default class GameInterface {
       this.engineIni.writeToFile(EngineIni.GetDefaultFilePath());
     }
 
+    const modifiedRDAs = {};
     for (let k in this.fileIndex) {
-      if (this.fileIndex[k].isModified) modifiedFiles.push(this.fileIndex[k]);
+      const file = this.fileIndex[k];
+      if (!file.isModified) continue; 
+      
+      if (file.rda in modifiedRDAs) {
+        modifiedRDAs[file.rda].push(file);
+      } else {
+        modifiedRDAs[file.rda] = [file];
+      }
     }
 
-    for (let file of modifiedFiles) {
-      baseRDA.updateFile(file.filepath, file.content);
+    for (let rdaPath in modifiedRDAs) {
+      const rda = new RDAAsset();
+      await rda.readFile(rdaPath + ".backup");
+      for (let file of modifiedRDAs[rdaPath]) {
+        rda.updateFile(file.filepath, file.content);
+      }
+      await rda.writeToFile(rdaPath);
     }
 
-    await baseRDA.writeToFile(patch8Path);
+    this.shaderAPI.resetCache();
+  }
 
-    //this.shaderAPI.resetCache();
+  /**
+   * Creates a backup copy of a file on the system and stores it in the same directory
+   * @param {string} path Path to the file
+   * @returns 
+   */
+  async backupSystemFile(path) {
+    const backupPath = path + ".backup";
+    // Only backup if backup file does not exist
+    await fs.promises.stat(backupPath).catch(() => {
+      return fs.promises.copyFile(path, backupPath);
+    });
+    return backupPath;
+  }
+
+  /**
+   * Replaces a file on the file system with a backup file if one exists
+   * @param {string} path Path to the file. (File to restore. Not the backup!)
+   */
+  async restoreSystemFile(path) {
+    const backupPath = path + ".backup";
+    await fs.promises.copyFile(backupPath, path);
+    return path;
   }
 
   /**
@@ -316,53 +351,16 @@ export default class GameInterface {
   }
 
   async patchEXE() {
-    // Backup EXE
-    const exePath = Path.join(this.gameDirectory, "Anno5.exe");
-    await fs.promises.stat(exePath + ".prepatch").catch(() => {
-      return fs.promises.copyFile(exePath, exePath + ".prepatch");
-    });
-
-    const exeContent = await fs.promises.readFile(Path.join(this.gameDirectory, "Anno5.exe.prepatch"));
-
-    function replace(search, replace) {
-      if (search.length != replace.length) throw new Error("Search and length section need to be same size!");
-
-      const indexA = exeContent.indexOf(search);
-      const indexB = exeContent.indexOf(search, indexA + 1);
-      if (indexB != -1) throw new Error("Search chunk occours multiple times!");
-      replace.copy(exeContent, indexA, 0, replace.length);
-    }
-
-    // Enable Patch 9
-    replace(  // Increase itteration count in PatchX loading loop
-      Buffer.from([0x83, 0xff, 0x09, 0x0f, 0x8c, 0x3f, 0xff, 0xff, 0xff]),
-      Buffer.from([0x83, 0xff, 0x0A, 0x0f, 0x8c, 0x3f, 0xff, 0xff, 0xff])
-    );
-
-    // Replace related design news server with my own. They still advertise anno-online 5 years after it shut down.
-    replace(
-      Buffer.from("news.related-designs.de", "utf16le"),
-      Buffer.from("anpatcher2070.atoria.de", "utf16le")
-    );
-
-    // Disable Autopatcher
-    replace( // JZ to JNZ
-      Buffer.from([0x84, 0xdb, 0x0f, 0x84, 0xad, 0x00, 0x00, 0x00, 0x68, 0x24, 0xbe]),
-      Buffer.from([0x84, 0xdb, 0x0f, 0x85, 0xad, 0x00, 0x00, 0x00, 0x68, 0x24, 0xbe])
-    );
-
-    await fs.promises.writeFile(exePath, exeContent);
+    // Removed because of 64 bit update of the game from 2022-09-07
   }
 
   /**
    * Reverts all changes done by the patcher. (Except changes to Engine.ini)
    */
   async unpatch() {
-    const exePath = Path.join(this.gameDirectory, "Anno5.exe");
     const patch8Path = Path.join(this.gameDirectory, "maindata", "patch8.rda");
-
-    await fs.promises.copyFile(patch8Path + ".prepatch", patch8Path);
-    await fs.promises.copyFile(exePath + ".prepatch", exePath);
+    await this.restoreSystemFile(patch8Path);
+    this.shaderAPI.resetCache();
   }
 
   async loadMod(path) {

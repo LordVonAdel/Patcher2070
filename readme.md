@@ -10,7 +10,6 @@ What the API can do at the moment:
 - Add player colors
 - Add/Change strings supporting multiple languages
 - Change assets (Buildings, Vehicles, etc.)
-- Replace the news server for main menu news
 - Extract icons as single files
 - Add/Change style classes for tooltips
 - Change values in Engine.ini
