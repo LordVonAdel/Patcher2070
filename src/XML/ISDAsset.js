@@ -79,7 +79,7 @@ export default class ISDAsset extends XMLAsset {
   getTerrainHeightAtLocation(x, y) {
     if (!this.xml) throw new Error("No data in Island");
     const targetChunk = this.getChunkAtLocation(x, y);
-    return targetChunk.getHeightAtIslandCell(x, y);
+    return targetChunk.getHeightAtIslandPosition(x, y);
   }
 
   /**
@@ -91,7 +91,7 @@ export default class ISDAsset extends XMLAsset {
   setTerrainHeightAtLocation(x, y, height) {
     if (!this.xml) throw new Error("No data in Island");
     const targetChunk = this.getChunkAtLocation(x, y);
-    targetChunk.setHeightAtIslandCell();
+    targetChunk.setHeightAtIslandPosition();
 
     const heightMap = targetChunk.findChild("HeightMap");
     if (!heightMap) return;
@@ -198,55 +198,65 @@ class IslandChunk {
 
   /**
    * Gets the height of a point on the island
-   * @param {Number} islandX X-Position of the cell relative to the island
-   * @param {Number} islandY Y-Position of the cell relative to the island
+   * @param {Number} islandX X-Position of the vertex relative to the island
+   * @param {Number} islandY Y-Position of the vertex relative to the island
    * @returns {Number} Height at that point
    */
-  getHeightAtIslandCell(islandX, islandY) {
+  getHeightAtIslandPosition(islandX, islandY) {
     const localX = islandX - this.positionX;
     const localY = islandY - this.positionY;
-    return this.getHeightAtLocalCell(localX, localY);
+    return this.getHeightAtLocalPosition(localX, localY);
   }
 
   /**
    * Gets the height of a vertex in the chunk
-   * @param {Number} cellX X-Position of the cell relative to this chunk
-   * @param {Number} cellY Y-Position of the cell relative to this chunk
+   * @param {Number} chunkX X-Position of the vertex relative to this chunk
+   * @param {Number} chunkY Y-Position of the vertex relative to this chunk
    * @returns {Number} Height at that point
    */
-  getHeightAtLocalCell(cellX, cellY) {
+  getHeightAtLocalPosition(chunkX, chunkY) {
     const heightData = this.getHeightData();
     if (!heightData) return -40;
 
-    if (cellX < 0 || cellY < 0) throw new Error("Position outside of chunk");
-    if (cellX > this.heightMapWidth || cellY > this.heightMapWidth) throw new Error("Position outside of chunk");
-    const tileIndex = cellX + cellY * this.heightMapWidth;
+    const gridSize = this.heightMapWidth - 1;
+    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;;
+    chunkX /= cellWidth;
+    chunkY /= cellWidth;
+
+    if (chunkX < 0 || chunkY < 0) throw new Error("Position outside of chunk");
+    if (chunkX > this.heightMapWidth || chunkY > this.heightMapWidth) throw new Error("Position outside of chunk");
+    const tileIndex = chunkX + chunkY * this.heightMapWidth;
     return heightData.readFloatLE(tileIndex * 4);
   }
 
   /**
    * Sets the height of a point on the island
-   * @param {Number} islandX X-Position of the cell relative to the island
-   * @param {Number} islandY Y-Position of the cell relative to the island
+   * @param {Number} islandX X-Position of the vertex relative to the island
+   * @param {Number} islandY Y-Position of the vertex relative to the island
    * @param {Number} height to set to
    */
-   setHeightAtIslandCell(islandX, islandY, height) {
+   setHeightAtIslandPosition(islandX, islandY, height) {
     const localX = islandX - this.positionX;
     const localY = islandY - this.positionY;
-    return this.setHeightAtLocalCell(localX, localY, height);
+    return this.setHeightAtLocalPosition(localX, localY, height);
   }
 
   /**
    * Sets the height of a vertex on this island.
-   * @param {Number} cellX X-Position of the cell relative to this chunk
-   * @param {Number} cellY Y-Position of the cell relative to this chunk
-   * @param {Number} height Height to set that cell to
+   * @param {Number} chunkX X-Position of the vertex relative to this chunk
+   * @param {Number} chunkY Y-Position of the vertex relative to this chunk
+   * @param {Number} height Height to set that vertex to
    */
-  setHeightAtLocalCell(cellX, cellY, height) {
+  setHeightAtLocalPosition(chunkX, chunkY, height) {
     const heightData = this.getHeightData();
     if (!heightData) return;
 
-    const tileIndex = cellX + cellY * this.heightMapWidth;
+    const gridSize = this.heightMapWidth - 1;
+    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;;
+    chunkX /= cellWidth;
+    chunkY /= cellWidth;
+
+    const tileIndex = chunkX + chunkY * this.heightMapWidth;
     return heightData.writeFloatLE(height, tileIndex * 4);
   }
 
@@ -298,17 +308,32 @@ class IslandChunk {
     const gridSize = this.heightMapWidth - 1;
     const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;
 
+    const verticesPerSide = gridSize + 1;
+
     // ToDo: Optimize vertex count by sharing corners
+    const vertices = [];
+    for (let x = 0; x < verticesPerSide; x++) {
+      for (let y = 0; y < verticesPerSide; y++) {
+        vertices.push(
+          obj.addVertex(this.positionX + x * cellWidth, this.getHeightAtLocalPosition(x * cellWidth, y * cellWidth), this.positionY + y * cellWidth)
+        )
+      }
+    }
+
 
     for (let x = 0; x < gridSize; x++) {
       for (let y = 0; y < gridSize; y++) {
-        const v0 = obj.addVertex(this.positionX + x * cellWidth, this.getHeightAtLocalCell(x, y), this.positionY + y * cellWidth);
-        const v1 = obj.addVertex(this.positionX + (x + 1) * cellWidth, this.getHeightAtLocalCell(x + 1, y), this.positionY + y * cellWidth);
-        const v2 = obj.addVertex(this.positionX + x * cellWidth, this.getHeightAtLocalCell(x, y + 1), this.positionY + (y + 1) * cellWidth);
-        const v3 = obj.addVertex(this.positionX + (x + 1) * cellWidth, this.getHeightAtLocalCell(x + 1, y + 1), this.positionY + (y + 1) * cellWidth);
-        
-        obj.addFace(v1, v0, v2);
-        obj.addFace(v3, v1, v2);
+        obj.addFace(
+          vertices[x + y * verticesPerSide],
+          vertices[(x + 1) + y * verticesPerSide],
+          vertices[x + (y + 1) * verticesPerSide]
+        );
+
+        obj.addFace(
+          vertices[(x + 1) + y * verticesPerSide],
+          vertices[(x + 1) + (y + 1) * verticesPerSide],
+          vertices[x + (y + 1) * verticesPerSide],
+        );
       }
     }
   }
