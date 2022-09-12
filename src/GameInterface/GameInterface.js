@@ -133,6 +133,7 @@ export default class GameInterface {
     baseFiles.push(...patchFiles);
     for (let filepath of baseFiles) {      
       const rda = new RDAAsset();
+      RDACache[filepath.replace(".backup", "")] = rda;
 
       try {
         await rda.readFile(filepath);
@@ -369,6 +370,8 @@ export default class GameInterface {
   }
 }
 
+const RDACache = {};
+
 class FileIndex {
   constructor(filepath, rda) {
     this.filepath = filepath;
@@ -382,11 +385,12 @@ class FileIndex {
       return this.content;
     }
 
-    const rdaAsset = new RDAAsset();
-    await rdaAsset.readFile(this.rda);    
-    this.content = rdaAsset.extractFile(this.filepath);
+    if (!(this.rda in RDACache)) {
+      RDACache[this.rda] = new RDAAsset();
+      await RDACache[this.rda].readFile(this.rda);    
+    }
+    this.content = RDACache[this.rda].extractFile(this.filepath);
     return this.content;
-    return rdaAsset.extractFile(this.filepath);
   }
 
   /**
