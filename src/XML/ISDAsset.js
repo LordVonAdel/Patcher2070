@@ -56,15 +56,15 @@ export default class ISDAsset extends XMLAsset {
   /**
    * @returns {bool}
    */
-  get SendExplorationMessage() {
+  get sendExplorationMessage() {
     if (!this.xml) throw new Error("No data in Island");
     return Boolean(this.xml.getInlineContent("SendExplorationMessage"));
   }
 
   /**
-   * @param {bool} ShowExplorationMessage
+   * @param {bool} value
    */
-  set SendExplorationMessage(value) {
+  set sendExplorationMessage(value) {
     if (!this.xml) throw new Error("No data in Island");
     this.xml.setInlineContent(value ? 1 : 0, "SendExplorationMessage");
   }
@@ -110,7 +110,12 @@ export default class ISDAsset extends XMLAsset {
 
   clearTerrainHeight(height) {
     const chunks = this.getAllChunks();
-    for (let chunk of chunks) chunk.clearHeight(height)
+    for (let chunk of chunks) chunk.clearHeight(height);
+  }
+
+  clearTerrainTextureWeights(weights) {
+    const chunks = this.getAllChunks();
+    for (let chunk of chunks) chunk.clearTextureWeights(weights);
   }
 
   /**
@@ -172,6 +177,13 @@ export default class ISDAsset extends XMLAsset {
     }
     return obj.toFile();
   }
+
+  validate() {
+    const chunks = this.getAllChunks();
+    for (const chunk of chunks) {
+      chunk.validate();
+    }
+  }
 }
 
 class IslandChunk {
@@ -196,6 +208,7 @@ class IslandChunk {
   get positionX() { return this.chunkIndexX * ISDAsset.CHUNK_SIZE; }
   get positionY() { return this.chunkIndexY * ISDAsset.CHUNK_SIZE; }
 
+  // ============================ HEIGHT ===============================
   /**
    * Gets the height of a point on the island
    * @param {Number} islandX X-Position of the vertex relative to the island
@@ -252,7 +265,7 @@ class IslandChunk {
     if (!heightData) return;
 
     const gridSize = this.heightMapWidth - 1;
-    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;;
+    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;
     chunkX /= cellWidth;
     chunkY /= cellWidth;
 
@@ -298,6 +311,60 @@ class IslandChunk {
     heightMap.setInlineContent(buff, "Data");
   }
 
+   /// ================ TEXTURE ==================================
+   getTextureWeightsAtPosition(chunkX, chunkY) {
+    const layers = this.xml.getChildrenOfType("TexIndexData");
+    const out = {};
+    for (const layer of layers) {
+      const texLayer = new TextureLayer(layer);
+      out[texLayer.index] = texLayer.getWeight(chunkX, chunkY)
+    }
+    return out;
+  }
+
+  setTextureWeightsAtPosition(chunkX, chunkY, textureIndex, weight) {
+    const layers = this.xml.getChildrenOfType("TexIndexData");
+    const textureLayers = layers.map(xml => new TextureLayer(xml));
+    
+    let targetLayer = textureLayers.find(layer => layer.index == textureIndex);
+    if (!targetLayer) {
+      targetLayer = this.generateTextureLayer(textureIndex);
+    }
+    targetLayer.setWeight(chunkX, chunkY, weight);
+  }
+
+  clearTextureWeights(weights) {
+    if (this.vertexResolution < 0) return; // -1 for chunks without surface
+
+    const layers = this.xml.getChildrenOfType("TexIndexData");
+    for (const layer of layers) {
+      this.xml.removeChild(layer);
+    }
+
+    for (const index in weights) {
+      const value = weights[index];
+      const layer = this.generateTextureLayer(index);
+      layer.clear(value);
+    }
+  }
+
+  cleanupTextureWeights() {
+    const layers = this.xml.getChildrenOfType("TexIndexData");
+    for (const layer of layers) {
+      const texLayer = new TextureLayer(layer);
+      if (texLayer.isZero()) {
+        this.xml.removeChild(layer);
+      }
+    }
+  }
+
+  generateTextureLayer(index) {
+    const layer = TextureLayer.Generate(index, (1 << this.vertexResolution) + 1)
+    this.xml.addChild(layer.xml);
+    return layer;
+  }
+
+  /// ===================== EXPORT ============================
   /**
    * @param {OBJ} obj 
    */
@@ -310,16 +377,14 @@ class IslandChunk {
 
     const verticesPerSide = gridSize + 1;
 
-    // ToDo: Optimize vertex count by sharing corners
     const vertices = [];
     for (let x = 0; x < verticesPerSide; x++) {
       for (let y = 0; y < verticesPerSide; y++) {
         vertices.push(
           obj.addVertex(this.positionX + x * cellWidth, this.getHeightAtLocalPosition(x * cellWidth, y * cellWidth), this.positionY + y * cellWidth)
-        )
+        );
       }
     }
-
 
     for (let x = 0; x < gridSize; x++) {
       for (let y = 0; y < gridSize; y++) {
@@ -336,5 +401,83 @@ class IslandChunk {
         );
       }
     }
+  }
+
+  validate() {
+    const mapWidth = this.heightMapWidth;
+    if (mapWidth < 0) return true;
+
+    const layers = this.xml.getChildrenOfType("TexIndexData");
+    for (const layer of layers) {
+      const texLayer = new TextureLayer(layer);
+      if (texLayer.width != mapWidth) throw new Error("Texture and height map are not in same scale!!!");
+    }
+  }
+}
+
+class TextureLayer {
+
+  constructor(xml) {
+    this.xml = xml;
+  }
+
+  get index() {
+    return this.xml.getInlineContent("TextureIndex");
+  }
+
+  set index(value) {
+    this.xml.setInlineContent("TextureIndex", value);
+  }
+
+  get width() {
+    return this.xml.findChild("AlphaMap").getInlineContent("Width");
+  }
+
+  getWeight(x, y) {
+    const alphaMap = this.xml.findChild("AlphaMap");
+
+    const alphaMapWidth = alphaMap.getInlineContent("Width");
+    const localX = x * (ISDAsset.CHUNK_SIZE / (alphaMapWidth - 1));
+    const localY = y * (ISDAsset.CHUNK_SIZE / (alphaMapWidth - 1));
+
+    const alphaMapContent = alphaMap.getInlineContent("Data");
+    return alphaMapContent[localX + localY * alphaMapWidth] / 255;
+  }
+
+  setWeight(x, y, weight) {
+    const alphaMap = this.xml.findChild("AlphaMap");
+
+    const alphaMapWidth = alphaMap.getInlineContent("Width");
+    const localX = x * (ISDAsset.CHUNK_SIZE / (alphaMapWidth - 1));
+    const localY = y * (ISDAsset.CHUNK_SIZE / (alphaMapWidth - 1));
+
+    const alphaMapContent = alphaMap.getInlineContent("data");
+    alphaMapContent[localX + localY * alphaMapWidth] = Math.floor(weight * 255);
+  }
+
+  clear(value) {
+    const alphaMap = this.xml.findChild("AlphaMap");
+    const alphaMapContent = alphaMap.getInlineContent("data");
+    alphaMapContent.fill(Math.floor(value * 255));
+  }
+
+  isZero() {
+    const alphaMap = this.xml.findChild("AlphaMap");
+    
+    /**
+     * @type {Buffer}
+     */
+    const alphaMapContent = alphaMap.getInlineContent("data");
+    return !alphaMapContent.some((value, index, uint8) => value > 0);
+  }
+
+  static Generate(index, size) {
+    const xml = new XMLElement("TexIndexData");
+    xml.setInlineContent("TextureIndex", index);
+    const alphaMap = new XMLElement("AlphaMap");
+    alphaMap.setInlineContent(size, "Width");
+    alphaMap.setInlineContent(Buffer.alloc(size * size), "Data");
+    xml.addChild(alphaMap);
+    return new TextureLayer(xml);
   }
 }
