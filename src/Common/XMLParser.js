@@ -184,6 +184,11 @@ export class XMLElement {
     this.content.push(element);
   }
 
+  removeChild(element) {
+    const index = this.content.indexOf(element);
+    if (index >= 0) this.content.splice(index, 1);
+  }
+
   /**
    * 
    * @param {string} tagName Non case sensitive tag name
