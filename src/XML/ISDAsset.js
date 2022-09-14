@@ -134,6 +134,11 @@ export default class ISDAsset extends XMLAsset {
     for (let chunk of chunks) chunk.clearTextureWeights(weights);
   }
 
+  getTextureWeightsAtLocation(x, y) {
+    const chunk = this.getChunkAtLocation(x, y);
+    return chunk.getTextureWeightsAtPosition(x - chunk.positionX, y - chunk.positionY);
+  }
+
   /**
    * @returns {IslandChunk[]} chunks
    */
@@ -380,10 +385,11 @@ export default class ISDAsset extends XMLAsset {
 
         // -32768 - 32767
 
+        // ToDo: Find out how this number works
         const h = heightBuffer.readInt16LE(bufferOffset);
         const hFormatted = ((targetHeight + 40) / 80) * (32768 + 32767) - 32768;
 
-        heightBuffer.writeInt16LE(targetHeight * 1024, bufferOffset);
+        // heightBuffer.writeInt16LE(targetHeight * 1024, bufferOffset);
       }
     }
   }
@@ -504,6 +510,14 @@ class IslandChunk {
 
   get vertexResolution() {
     return Number(this.xml.getInlineContent("VertexResolution"));
+  }
+
+  get flags() {
+    return Number(this.xml.getInlineContent("Flags"));
+  }
+
+  set flags(value) {
+    this.xml.setInlineContent(value, "Flags")
   }
 
   generateHeightMap(resolution) {
@@ -678,7 +692,7 @@ class TextureLayer {
 
   static Generate(index, size) {
     const xml = new XMLElement("TexIndexData");
-    xml.setInlineContent("TextureIndex", index);
+    xml.setInlineContent(index, "TextureIndex");
     const alphaMap = new XMLElement("AlphaMap");
     alphaMap.setInlineContent(size, "Width");
     alphaMap.setInlineContent(Buffer.alloc(size * size), "Data");
@@ -740,3 +754,39 @@ class IslandObject {
     return obj;
   }
 }
+
+/**
+ * SeaLevel:                Read + Write
+ * Width:                   Read
+ * Height:                  Read
+ * Clime:                   Read + Write
+ * Difficulty:              Read + Write
+ * UsedChunks:
+ * BuildBlockerShapes:      Read
+ * CamBlockerShapes:        Read
+ * SurfLines:               Read
+ * CoastBuildingLines:      Read
+ * Lakes:
+ * Rivers:
+ * RiverGrid:
+ * SeaLevel:                Read + Write
+ * Sandbanks:           
+ * Fogbanks: 
+ * TerrainNormalSplines:
+ * AIPoints:
+ * ConstructionRecords:
+ * Volcanos:
+ * SendExplorationMessage:  Read + Write
+ * m_GOPManager:
+ *  - m_GRIDManager:
+ *  - m_StreetGrid:
+ *  - Objects:              Read + Write
+ *  - SnapPartner:      
+ *  - ObjectNames:
+ *  - ObjectGroups:
+ * Terrain:                 
+ *  - Height Map:           Read + Write
+ *  - TexIndexData:         Read + Write
+ *  - Flags:                Read + Write  
+ *  - VertexResolution:     Read
+ */
