@@ -9,6 +9,12 @@ export default class ISDAsset extends XMLAsset {
 
   constructor() {
     super();
+
+    /**
+     * @private
+     * @type {number}
+     */
+    this._nextObjectId = -1;
   }
 
   readData(data) {
@@ -67,6 +73,16 @@ export default class ISDAsset extends XMLAsset {
   set sendExplorationMessage(value) {
     if (!this.xml) throw new Error("No data in Island");
     this.xml.setInlineContent(value ? 1 : 0, "SendExplorationMessage");
+  }
+
+  get seaLevel() {
+    if (!this.xml) throw new Error("No data in Island");
+    return +this.xml.getInlineContent("SeaLevel");
+  }
+
+  set seaLevel(value) {
+    if (!this.xml) throw new Error("No data in Island");
+    this.xml.setInlineContent(value, "SeaLevel");
   }
 
   static CHUNK_SIZE = 16;
@@ -163,6 +179,128 @@ export default class ISDAsset extends XMLAsset {
     return new IslandChunk(chunkIndexX, chunkIndexY, chunks[chunkIndex]);
   }
 
+  getAllObjects() {
+    const gopManager = this.xml.findChild("m_GOPManager");
+    const objectsGroup = gopManager.findChild("Objects");
+
+    const out = [];
+
+    for (const group of objectsGroup.content) {
+      const objectType = group.name;
+      const objectsInGroup = group.findChild("Objects").getChildrenOfType("Object");
+      for (const obj of objectsInGroup) {
+        out.push(
+          new IslandObject(obj, objectType)
+        );
+      }
+    }
+
+    return out;
+  }
+
+  createObject(type) {
+    if (this._nextObjectId == -1) {
+      this._nextObjectId = this.getAllObjects().reduce((acc, curr) => Math.max(acc, curr), 0) + 1;
+    }
+
+    const object = IslandObject.Generate(type);
+    this.xml.findChild("m_GOPManager").findChild("objects").findChild(type).findChild("Objects").addChild(object.xml);
+    object.id = this._nextObjectId++;
+    return object;
+  }
+
+  removeObject(object) {
+    this.xml.findChild("m_GOPManager").findChild("objects").findChild(object.type).findChild("Objects").removeChild(object.xml);
+  }
+
+  clearObjects() {
+    const objects = this.getAllObjects();
+    for (const object of objects) {
+      this.removeObject(object);
+    }
+  }
+
+  getCoastBuildingLines() {
+    const out = [];
+
+    const lines = this.xml.findChild("CoastBuildingLines").getChildrenOfType("i");
+    for (const line of lines) {
+      const points = line.findChild("Points").getChildrenOfType("i");
+      const outLine = [];
+      for (const point of points) {
+        const buffer = point.getInlineContent();
+        const x = buffer.readInt32LE(0) / (1 << 12);
+        const z = buffer.readInt32LE(8) / (1 << 12);
+        outLine.push([x, z]);
+      }
+      out.push(outLine);
+    }
+
+    return out;
+  }
+
+  getSurfLines() {
+    const out = [];
+
+    const lines = this.xml.findChild("SurfLines").getChildrenOfType("i");
+    for (const line of lines) {
+      const points = line.findChild("SurfLinePoints").getChildrenOfType("i");
+      const outLine = {
+        setting: line.getInlineContent("SurfSetting"),
+        points: []
+      };
+      for (const point of points) {
+        const buffer = point.getInlineContent("Position");
+        const x = buffer.readFloatLE(0);
+        const y = buffer.readFloatLE(4);
+        const z = buffer.readFloatLE(8);
+        outLine.points.push({
+          width: point.getInlineContent("Width"),
+          position: [x, y, z]
+        });
+      }
+      out.push(outLine);
+    }
+
+    return out;
+  }
+
+  getBuildBlockerShapes() {
+    const out = [];
+    const shapes = this.xml.findChild("BuildBlockerShapes").getChildrenOfType("i");
+    for (const shape of shapes) {
+      const shapeData = [];
+      const points = shape.findChild("Polygon").getChildrenOfType("i");
+      for (const point of points) {
+        const buffer = point.getInlineContent();
+        const x = buffer.readInt32LE(0) / (1 << 12);
+        const z = buffer.readInt32LE(8) / (1 << 12);
+        shapeData.push([x, z]);
+      }
+      out.push(shapeData);
+    }
+
+    return out;
+  }
+
+  getCamBlockerShapes() {
+    const out = [];
+    const shapes = this.xml.findChild("CamBlockerShapes").getChildrenOfType("i");
+    for (const shape of shapes) {
+      const shapeData = [];
+      const points = shape.findChild("Polygon").getChildrenOfType("i");
+      for (const point of points) {
+        const buffer = point.getInlineContent();
+        const x = buffer.readInt32LE(0) / (1 << 12);
+        const z = buffer.readInt32LE(8) / (1 << 12);
+        shapeData.push([x, z]);
+      }
+      out.push(shapeData);
+    }
+
+    return out;
+  }
+
   /**
    * Generates an OBJ file of the island terrain
    * @returns {string} obj file content
@@ -170,18 +308,83 @@ export default class ISDAsset extends XMLAsset {
   exportAsOBJ() {
     if (!this.xml) throw new Error("No data in Island");
 
-    const obj = new OBJ();
+    // ==== Terrain ====
+    const objTerrain = new OBJ("Terrain");
     const chunks = this.getAllChunks();
     for (let chunk of chunks) {
-      chunk.buildToObj(obj);
+      chunk.buildToObj(objTerrain);
     }
-    return obj.toFile();
+
+    // ==== Coast Building Lines ====
+    const objCoastBuildingLines = new OBJ("CoastBuildingLines");
+    const buildingLines = this.getCoastBuildingLines();
+    for (const line of buildingLines) {
+      objCoastBuildingLines.addLineFromPoints(line.map((p) => [p[0], 0, p[1]]));
+    }
+
+    // ==== Surf Lines ====
+    const objSurfLines = new OBJ("SurfLines");
+    const surfLines = this.getSurfLines();
+    for (const line of surfLines) {
+      objSurfLines.addLineFromPoints(line.points.map(p => p.position));
+    }
+
+    // ==== Build Blocker Shapes ====
+    const objBuildBlockerShapes = new OBJ("BuildBlockerShapes");
+    const buildBlockers = this.getBuildBlockerShapes();
+    for (const blocker of buildBlockers) {
+      objBuildBlockerShapes.addNGon(blocker.map((p) => [p[0], 0, p[1]]));
+    }
+
+    // ==== Camera Blocker Shapes ====
+    const objCameraBlockerShapes = new OBJ("CameraBlockerShapes");
+    const cameraBlockers = this.getCamBlockerShapes();
+    for (const blocker of cameraBlockers) {
+      objCameraBlockerShapes.addNGon(blocker.map((p) => [p[0], 0, p[1]]));
+    }
+
+    return OBJ.CombineToFile([objTerrain, objCoastBuildingLines, objSurfLines, objBuildBlockerShapes, objCameraBlockerShapes]);
   }
 
   validate() {
     const chunks = this.getAllChunks();
     for (const chunk of chunks) {
       chunk.validate();
+    }
+
+    // Check for object id reuse
+    const ids = [];
+    const objects = this.getAllObjects();
+    for (const object of objects) {
+      if (ids.includes(object.id)) throw new Error("Object ID was already used!");
+      ids.push(object.id);
+    }
+  }
+
+  recalculate() {
+    this.recalculateHeightMaps();  
+  }
+
+  recalculateHeightMaps() {
+    const heightMapV2 = this.xml.findChild("m_GOPManager").findChild("m_GRIDManager").findChild("m_HeightMap_v2");
+
+    /**
+     * @type {Buffer}
+     */
+    const heightBuffer = heightMapV2.getInlineContent();
+
+    for (let x = 0; x < this.width; x++) {
+      for (let y = 0; y < this.height; y++) {
+        const bufferOffset = (y * this.height + x) * 2;
+        const targetHeight = this.getTerrainHeightAtLocation(x, y);
+
+        // -32768 - 32767
+
+        const h = heightBuffer.readInt16LE(bufferOffset);
+        const hFormatted = ((targetHeight + 40) / 80) * (32768 + 32767) - 32768;
+
+        heightBuffer.writeInt16LE(targetHeight * 1024, bufferOffset);
+      }
     }
   }
 }
@@ -407,11 +610,13 @@ class IslandChunk {
     const mapWidth = this.heightMapWidth;
     if (mapWidth < 0) return true;
 
-    const layers = this.xml.getChildrenOfType("TexIndexData");
-    for (const layer of layers) {
-      const texLayer = new TextureLayer(layer);
-      if (texLayer.width != mapWidth) throw new Error("Texture and height map are not in same scale!!!");
-    }
+    // @Todo Fix validation
+
+    // const layers = this.xml.getChildrenOfType("TexIndexData");
+    // for (const layer of layers) {
+    //   const texLayer = new TextureLayer(layer);
+    //   if (texLayer.width != mapWidth) throw new Error("Texture and height map are not in same scale!!!");
+    // }
   }
 }
 
@@ -479,5 +684,59 @@ class TextureLayer {
     alphaMap.setInlineContent(Buffer.alloc(size * size), "Data");
     xml.addChild(alphaMap);
     return new TextureLayer(xml);
+  }
+}
+
+class IslandObject {
+
+  /**
+   * @param {XMLElement} xml 
+   */
+  constructor(xml, type = "Nature") {
+    /**
+     * @property {"Handle"|"Feedback"|"Simple"|"Nature"|"Grass"} Type of the object
+     * @private
+     */
+    this._type = type;
+
+    this.xml = xml;
+  }
+
+  get type() { return this._type; }
+
+  get id() { return +this.xml.getInlineContent("m_ID"); }
+  set id(value) { return this.xml.setInlineContent(value, "m_ID"); }
+
+  get guid() { return +this.xml.getInlineContent("m_GUID"); }
+  set guid(value) { return this.xml.setInlineContent(value, "m_GUID"); }
+  
+  get variation() { return +this.xml.getInlineContent("m_Variation"); }
+  set variation(value) { return this.xml.setInlineContent(value, "m_Variation"); }
+
+  get position() { return this.xml.getInlineContent("m_Position"); }
+  set position(value) { return this.xml.setInlineContent(value, "m_Position"); }
+  
+  get playerId() { return +this.xml.getInlineContent("m_PlayerID"); }
+  set playerId(value) { return this.xml.setInlineContent(value, "m_PlayerID"); }
+  
+  get direction() { return this.xml.getInlineContent("m_Direction"); }
+  set direction(value) { return this.xml.setInlineContent(value, "m_Direction"); }
+
+  /**
+   * 
+   * @param {"Handle"|"Feedback"|"Simple"|"Nature"|"Grass"} Type of the object
+   * @returns {IslandObject} generated object
+   */
+  static Generate(type) {
+    const xml = new XMLElement("Object");
+    const obj = new IslandObject(xml, type);
+
+    obj.variation = 0;
+    obj.playerId = 15;
+    obj.direction = 0;
+    obj.guid = 337;
+    obj.id = 1;
+
+    return obj;
   }
 }
