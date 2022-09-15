@@ -252,8 +252,9 @@ export default class GameInterface {
   /**
    * Applies all files marked as modified to the game. 
    * Warning: This function modifies installation files of the game!
+   * @param {boolean} patchMaindata Overwrite main file instead of just editing Patch9 ?
    */
-  async patch() {
+  async patch(patchMaindata = false) {
     if (this.assets) {
       this.fileIndex["data/config/game/assets.xml"].updateContent(this.assets.writeData());
     }
@@ -266,15 +267,19 @@ export default class GameInterface {
       this.engineIni.writeToFile(EngineIni.GetDefaultFilePath());
     }
 
+    const patch9 = Path.join(this.gameDirectory, "maindata", "patch9.rda");
+
     const modifiedRDAs = {};
     for (let k in this.fileIndex) {
       const file = this.fileIndex[k];
       if (!file.isModified) continue; 
       
-      if (file.rda in modifiedRDAs) {
-        modifiedRDAs[file.rda].push(file);
+      const rda = patchMaindata ? (file.rda ?? patch9) : patch9;
+      
+      if (rda in modifiedRDAs) {
+        modifiedRDAs[rda].push(file);
       } else {
-        modifiedRDAs[file.rda] = [file];
+        modifiedRDAs[rda] = [file];
       }
     }
 
