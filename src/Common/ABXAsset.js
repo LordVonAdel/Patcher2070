@@ -114,7 +114,7 @@ class ABXParser {
     const tag = new ABXTag();
     tag.type = string.split("=")[0];
     tag.comment = string.includes(":") ? string.substring(string.indexOf(":") + 1) : "";
-    tag.parameters = string.split("=")[1].split(":")[0].split(";");
+    tag.parameters = string.includes("=") ? string.split("=")[1].split(":")[0].split(";") : [];
     return tag;
   }
 }
