@@ -54,6 +54,16 @@ class ABXBlock {
   writeToString() {
     return `{\n${this.content.map(cnt => cnt.writeToString()).join("\n")}\n}`;
   }
+  
+  traverse(callback) {
+    for (const cnt of this.content) {
+      if (cnt instanceof ABXBlock) {
+        cnt.traverse(callback);
+      } else {
+        callback(cnt);
+      }
+    }
+  }
 }
 
 class ABXParser {
