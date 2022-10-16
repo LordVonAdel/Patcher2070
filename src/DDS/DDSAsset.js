@@ -8,6 +8,7 @@
 import FileAsset from "../Common/FileAsset.js";
 import Color from "../Common/Color.js";
 import DXTn from "dxtn";
+import { Buffer } from "buffer";
 
 const DDSFlags = {
   Caps: 0x1,
@@ -65,6 +66,10 @@ export default class DDSAsset extends FileAsset {
     const pixelFormatGBitMask = data.readUInt32LE(pixelFormatIndex + 20);
     const pixelFormatBBitMask = data.readUInt32LE(pixelFormatIndex + 24);
     const pixelFormatABitMask = data.readUInt32LE(pixelFormatIndex + 28);
+    const pixelFormatRBitMaskOffset = pixelFormatRBitMask.toString(2).replaceAll("1", "").length;
+    const pixelFormatGBitMaskOffset = pixelFormatGBitMask.toString(2).replaceAll("1", "").length;
+    const pixelFormatBBitMaskOffset = pixelFormatBBitMask.toString(2).replaceAll("1", "").length;
+    const pixelFormatABitMaskOffset = pixelFormatABitMask.toString(2).replaceAll("1", "").length;
 
     const maindataOffset = 128;
     const numberOfPixels = this.width * this.height;
@@ -73,25 +78,34 @@ export default class DDSAsset extends FileAsset {
     if (pixelFormatFlags & PixelFormatFlags.FourCC) {
       if (pixelFormatFourCC == "DXT1") {
         const maindataLength = numberOfPixels * 0.5;
-        const maindata = data.slice(maindataOffset, maindataOffset + maindataLength);
+        const maindata = data.subarray(maindataOffset, maindataOffset + maindataLength);
         this.rgba = DXTn.decompressDXT1(this.width, this.height, maindata);
         return;
       }
 
       if (pixelFormatFourCC == "DXT5") {
         const maindataLength = numberOfPixels * 1;
-        const maindata = data.slice(maindataOffset, maindataOffset + maindataLength);
+        const maindata = data.subarray(maindataOffset, maindataOffset + maindataLength);
         this.rgba = DXTn.decompressDXT5(this.width, this.height, maindata);
         return;
       }
     }
 
     // RGB formatted texture
-    if (pixelFormatFlags & PixelFormatFlags.RGB) {
-      if (pixelFormatRGBBitCount == 32) { // assumption: R8G8B8A8
-        const maindataLength = numberOfPixels * 4;
-        const maindata = data.slice(maindataOffset, maindataOffset + maindataLength);
-        this.rgba = maindata;
+    if (pixelFormatFlags & PixelFormatFlags.RGB) {      
+      if (pixelFormatRGBBitCount == 32) {
+        this.rgba = Buffer.alloc(numberOfPixels * 4);
+        for (let i = 0; i < numberOfPixels; i++) {
+          const coded = data.readUInt32LE(maindataOffset + i * 4);
+          const r = (coded & pixelFormatRBitMask) >> pixelFormatRBitMaskOffset;
+          const g = (coded & pixelFormatGBitMask) >> pixelFormatGBitMaskOffset;
+          const b = (coded & pixelFormatBBitMask) >> pixelFormatBBitMaskOffset;
+          const a = (coded & pixelFormatABitMask) >> pixelFormatABitMaskOffset;
+          this.rgba[i * 4 + 0] = r;
+          this.rgba[i * 4 + 1] = g;
+          this.rgba[i * 4 + 2] = b;
+          this.rgba[i * 4 + 3] = a;
+        }
         return;
       }
     }
