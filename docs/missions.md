@@ -30,7 +30,8 @@ An image of the layout of the map. From the editor. not used ingame.
 ### *.seq
 
 
-### *_airprofiles.xml
+### *_aiprofiles.xml
+
 
 ### *_assets.xml / *_features.xml / *_quests.xml / *_texts.xml
 Overwrites for the files in /data/config/ ?

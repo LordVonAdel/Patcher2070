@@ -467,7 +467,15 @@ export const Building = {
  */
 export const Effects = {
   SmallExplosion: "SmallExplosion",
-  Explosion: "Explosion"
+  Explosion: "Explosion",
+  NuclearExplosion: "NuclearExplosion",
+  Watersplash: "Watersplash",
+  AnimalWaterSplash: "AnimalWaterSplash",
+  LargeExplosion: "LargeExplosion",
+  WaterExplosion: "WaterExplosion",
+  Shield: "Shield",
+  Crater: "Crater",
+  Takeover: "Takeover",
 }
 
 /**
