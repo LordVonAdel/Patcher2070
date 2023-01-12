@@ -39,11 +39,16 @@ export default class StringAPI {
    * @throws Will throw an error if no GUIDs are free
    */
   async addString(texts, defaultLanguage = "eng") {
+    const guid = await this.getNextGUID();
+    return await this.setStringOfGUID(guid, texts, defaultLanguage);
+  }
+
+  async getNextGUID() {
     const guid = this.nextGUID++;
     if (guid > this.GUIDRangeMax) {
       throw new Error("Ran out of free GUIDs");
     }
-    return await this.setStringOfGUID(guid, texts, defaultLanguage);
+    return guid;
   }
 
   async getString(guid) {
