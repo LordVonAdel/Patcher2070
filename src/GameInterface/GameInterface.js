@@ -12,6 +12,7 @@ import StringAPI from './StringAPI.js';
 import IconsAPI from './IconsAPI.js';
 import LevelAPI from "./LevelAPI.js";
 import GamePropertiesAsset from '../XML/GamePropertiesAsset.js';
+import ModelAPI from './ModelAPI.js';
 
 export default class GameInterface {
 
@@ -65,6 +66,11 @@ export default class GameInterface {
      * @type {LevelAPI}
      */
     this.levelAPI = new LevelAPI(this);
+
+    /**
+     * @type {ModelAPI}
+     */
+    this.modelAPI = new ModelAPI(this);
 
     /**
      * @private
@@ -144,13 +150,26 @@ export default class GameInterface {
         continue;
       }
 
-      const rdaIndex = rda.getIndex();
-      for (let packedFile of rdaIndex) {
-        this.fileIndex[packedFile] = new FileIndex(packedFile, filepath.replace(".backup", ""));
-      }
+      this.indexRDAAsset(rda, filepath);
     }
 
     this.isAddonInstalled = baseFiles.some(filename => filename.includes("addon0.rda"));
+  }
+
+  indexRDAAsset(asset, filepath) {
+    const rdaIndex = asset.getIndex();
+    const rdaFilepath = filepath.replace(".backup", "");
+
+    for (let packedFile of rdaIndex) {
+      if (packedFile in this.fileIndex) {
+        this.fileIndex[packedFile].allRDAs.push(rdaFilepath);
+        this.fileIndex[packedFile].rda = rdaFilepath;
+      } else {
+        this.fileIndex[packedFile] = new FileIndex(packedFile, rdaFilepath);
+      }
+    }
+
+    RDACache[rdaFilepath] = asset;
   }
 
   doesFileExist(filepath) {
@@ -190,6 +209,14 @@ export default class GameInterface {
       if (callback(this.fileIndex[k])) return this.fileIndex[k];
     }
     return null;
+  }
+
+  async findGameFiles(callback) {
+    const out = [];
+    for (let k in this.fileIndex) {
+      if (callback(this.fileIndex[k])) out.push(this.fileIndex[k]);
+    }
+    return out;
   }
 
   async getDatasets() {
@@ -252,6 +279,9 @@ export default class GameInterface {
   /**
    * Applies all files marked as modified to the game. 
    * Warning: This function modifies installation files of the game!
+   * 
+   * Option to overwrite all occurrences of a file in the game, because I am not sure if the game picks always the "newest" file.
+   * 
    * @param {boolean} patchMaindata Overwrite main file instead of just editing Patch9 ?
    */
   async patch(patchMaindata = false) {
@@ -274,12 +304,14 @@ export default class GameInterface {
       const file = this.fileIndex[k];
       if (!file.isModified) continue; 
       
-      const rda = patchMaindata ? (file.rda ?? patch9) : patch9;
+      const allRDA = patchMaindata ? (file.allRDAs ?? [patch9]) : [patch9];
       
-      if (rda in modifiedRDAs) {
-        modifiedRDAs[rda].push(file);
-      } else {
-        modifiedRDAs[rda] = [file];
+      for (let rda of allRDA) {
+        if (rda in modifiedRDAs) {
+          modifiedRDAs[rda].push(file);
+        } else {
+          modifiedRDAs[rda] = [file];
+        }
       }
     }
 
@@ -364,13 +396,17 @@ export default class GameInterface {
    * Reverts all changes done by the patcher. (Except changes to Engine.ini)
    */
   async unpatch() {
-    const patch8Path = Path.join(this.gameDirectory, "maindata", "patch8.rda");
-    await this.restoreSystemFile(patch8Path);
+    const maindataDirectory = Path.join(this.gameDirectory, "maindata");
+    const rdaFiles = (await fs.promises.readdir(maindataDirectory)).filter(filename => filename.endsWith(".rda"));
+    for (let i in rdaFiles) {
+      await this.restoreSystemFile(Path.join(maindataDirectory, rdaFiles[i]));
+    }
     this.shaderAPI.resetCache();
   }
 
   async loadMod(path) {
     const mod = await import("File:\\" + path);
+    console.log("Loading mod: ", mod.default.title);
     await mod.default.run(this);
   }
 }
@@ -380,7 +416,8 @@ const RDACache = {};
 class FileIndex {
   constructor(filepath, rda) {
     this.filepath = filepath;
-    this.rda = rda;
+    this.rda = rda; // newest RDA file is found in (patch9 overwrites patch3 overwrites Data5 etc.)
+    this.allRDAs = [rda]; // All RDA files this file is present in
     this.content = null;
     this.isModified = false;
   }
