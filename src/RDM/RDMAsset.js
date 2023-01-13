@@ -19,11 +19,33 @@ export default class RDMAsset extends FileAsset {
      */
     this.raw = null;
 
+    /**
+     * @property {any[]} vertices
+     */
     this.vertices = [];
+
+    /**
+     * @property {Number[]} triangles Vertex indices
+     */
     this.triangles = [];
     this.materials = [];
 
+    this.metadata = {
+      originalMaterialNames: [],
+      originalGeometryNames: [],
+      originalTexturePaths: [],
+    };
+
     this.vertexFormat = null;
+
+    this.isInvalid = false;
+  }
+
+  /**
+   * @private
+   */
+  markInvalid() {
+    this.isInvalid = true;
   }
 
   /**
@@ -31,43 +53,114 @@ export default class RDMAsset extends FileAsset {
    */
   readData(data) {
     if (this.raw) throw new Error("Model already loaded!");
-
     this.raw = data;
 
-    // Offsets
-    const offsetsStart = data.readUInt32LE(32);
-    if (offsetsStart < 32) throw new Error("Offsets offset to low.");
+    // Header
+    if (data.subarray(0, 3).toString() !== "RDM") throw new Error("Invalid magic number!");
+    if (data[3] != 0x01) return this.markInvalid(); // Unknown what this flag does. Is 0 for some files
+    if (data.readUint32LE(0x0c) != 0x04) throw new Error("Something is different at this file (0x0c !=> 0x04)");
+    if (data.readUint32LE(0x10) != 0x1c) throw new Error("Something is different at this file (0x10 !=> 0x1c)");
 
-    const offsetsVertices = data.readUInt32LE(offsetsStart + 12);
-    const offsetsTriangles = data.readUInt32LE(offsetsStart + 16);
-    const offsetsMaterials = data.readUInt32LE(offsetsStart + 20);
+    this.validateBlocks();
+
+    let geometryOffsets;
+    this.readBlock(0x1C, buffer => {
+      if (buffer.length != 48) throw new Error("Block has different size");
+      
+      // 0xC1 + 0x00
+      this.readBlock(buffer.readUInt32LE(0x00), buffer => {
+        if (buffer.length != 72) throw new Error("Block has different length");
+        this.metadata.originalModelPath = this.readString(buffer.readUInt32LE(0));
+        this.metadata.rmpPath = this.readString(buffer.readUInt32LE(4));
+        if (!this.metadata.rmpPath.endsWith(".rmp")) throw new Error("Path does not end with .rmp!");
+      });
+
+      // 0xC1 + 0x04
+      geometryOffsets = buffer.readUInt32LE(0x04);
+
+      // 0xC1 + 0x08
+      this.readBlock(buffer.readUInt32LE(0x08), buffer => {
+        if (buffer.length != 28) throw new Error("Block has different size");
+
+        // 0xC1 + 0x08 => 0x00
+        this.readBlock(buffer.readUInt32LE(0x00), (buffer) => {
+          if (buffer.length != 48) throw new Error("Block has different size"); 
+  
+          // Material name of original in editor?
+          this.metadata.originalMaterialNames.push(this.readString(buffer.readUInt32LE(0)));
+          this.metadata.originalTexturePaths.push(this.readString(buffer.readUInt32LE(4)));
+        });
+      });
+
+      // 0xC1 + 0x0C
+      this.readBlock(buffer.readUInt32LE(0x0C), buffer => {
+        if (buffer.length != 32) throw new Error("Block has different size"); 
+
+        // 0xC1 + 0x0C =>
+        this.readBlock(buffer.readUInt32LE(0), buffer => {
+          if (buffer.length != 84) throw new Error("Block has different size");
+          
+          // 0xC1 + 0x0C => +0x00 =>
+          this.metadata.originalGeometryNames.push(
+            this.readString(buffer.readUInt32LE(0))
+          );
+        });
+      });
+    });
+
+    if (geometryOffsets == 0) return this.markInvalid();
+    if (geometryOffsets < 32) throw new Error("Offsets offset to low.");
+
+    // Offsets
+    let offset0, offset1, offset2, offsetVertices, offsetTriangles, offsetMaterials;
+    this.readBlock(geometryOffsets, buffer => {
+      if (buffer.length != 92 && buffer.length != 68) throw new Error("Offsets block has wrong size!");
+      offset0 =  buffer.readUInt32LE(0);
+      offset1 =  buffer.readUInt32LE(4);
+      offset2 =  buffer.readUInt32LE(8);
+      offsetVertices =  buffer.readUInt32LE(12);
+      offsetTriangles = buffer.readUInt32LE(16);
+      offsetMaterials = buffer.readUInt32LE(20);
+    });
+
+    // Block 0
+    this.readBlock(offset0, buffer => {
+      if (buffer.length != 28) throw new Error("Block 0 length mismatch");
+      this.metadata.objectName = this.readString(buffer.readUInt32LE(0));
+    });
+
+    // Block 1
+    this.readBlock(offset1, buffer => {
+      if (buffer.length != 24) throw new Error("Block 1 length mismatch");
+    });
+
+    // Block 2
+    this.readBlock(offset2, buffer => {
+      if (buffer.length != 20) throw new Error("Block 2 length mismatch!");
+    });
 
     // Materials
-    const materialSize = data.readUInt32LE(offsetsMaterials - 4);
-    const materialNumber = data.readUInt32LE(offsetsMaterials - 8);
-    for (let i = 0; i < materialNumber; i++) {
-      const offset = offsetsMaterials + i * 28;
-      const material = new RDMMaterial(data, offset);
+    this.readBlock(offsetMaterials, buffer => {
+      const material = new RDMMaterial(buffer, 0);
       this.materials.push(material);
-    }
+    });
 
     // Vertices
-    const vertexNumber = data.readUInt32LE(offsetsVertices - 8);
-    const vertexSize = data.readUInt32LE(offsetsVertices - 4);
-    
+    const vertexNumber = data.readUInt32LE(offsetVertices - 8);
+    const vertexSize = data.readUInt32LE(offsetVertices - 4);
     this.vertexFormat = VertexFormat.getBySize(vertexSize);
     for (let i = 0; i < vertexNumber; i++) {
-      const offset = offsetsVertices + i * vertexSize;
+      const offset = offsetVertices + i * vertexSize;
       const vertex = this.vertexFormat.read(data.slice(offset, offset + vertexSize));
       this.vertices.push(vertex);
     }
 
     // Triangles
-    const triangleNumber = data.readUInt32LE(offsetsTriangles - 8) / 3;
-    const triangleSize = data.readUInt32LE(offsetsTriangles - 4); // Size per index in bytes
+    const triangleNumber = data.readUInt32LE(offsetTriangles - 8) / 3;
+    const triangleSize = data.readUInt32LE(offsetTriangles - 4); // Size per index in bytes
 
     for (let i = 0; i < triangleNumber; i++) {
-      const offset = offsetsTriangles + i * 3 * triangleSize;
+      const offset = offsetTriangles + i * 3 * triangleSize;
 
       if (triangleSize == 4) {
         this.triangles.push([
@@ -89,6 +182,23 @@ export default class RDMAsset extends FileAsset {
     this.validateTriangles();
   }
 
+  // Helper functions bound to the current file buffer
+  readBlock(offset, callback) {
+    if (offset == 0) return;
+    const entryNumber = this.raw.readUint32LE(offset - 8);
+    const entrySize = this.raw.readUint32LE(offset - 4);
+    for (let i = 0; i < entryNumber; i++) {
+      callback(this.raw.subarray(offset + i * entrySize, offset + (i + 1) * entrySize), i);
+    }
+  }
+
+  readString(offset) {
+    if (offset == 0) return "";
+    const entryNumber = this.raw.readUint32LE(offset - 8);
+    const entrySize = this.raw.readUint32LE(offset - 4);
+    return this.raw.subarray(offset, offset + entryNumber * entrySize).toString("utf8");
+  }
+
   validateTriangles() {
     if (this.raw == null) throw new Error("Model not loaded!");
 
@@ -98,6 +208,22 @@ export default class RDMAsset extends FileAsset {
           throw new Error("Invalid vertex index");
         }
       }
+    }
+    return true;
+  }
+
+  validateBlocks() {
+    if (this.raw == null) throw new Error("Model not loaded!");
+
+    let offsets = [];
+    let offset = 0x14;
+
+    while (offset < this.raw.length) {
+      offsets.push(offset);
+
+      const count = this.raw.readUint32LE(offset);
+      const size = this.raw.readUint32LE(offset + 4);
+      offset += 8 + count * size;
     }
     return true;
   }
@@ -153,6 +279,29 @@ export default class RDMAsset extends FileAsset {
       out += material.toMTL() + "\n";
     }
     return out;
+  }
+
+  writeData() {
+    const blocks = [];
+    const header = Buffer.alloc(0x14);
+    header.write("RDM", 0);
+    header[0x03] = 0x01;
+    header[0x04] = 0x14;
+    header[0x0C] = 0x04;
+    header[0x10] = 0x1C;
+
+    const block0 = Buffer.alloc(0x30);
+    block0.writeUInt32LE(0x54, 0x00); // offset to filenames
+    block0.writeUInt32LE(0xff, 0x04); // offset to geometry offsets
+    blocks.push({num: 1, content: block0});
+
+    for (const block of blocks) {
+      const blockIndex = Buffer.alloc(8);
+      blockIndex.writeUInt32LE(block.num, 0);
+      blockIndex.writeUInt32LE(block.content.length, 4);
+
+      
+    }
   }
 }
 
