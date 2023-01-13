@@ -16,6 +16,7 @@ What the API can do at the moment:
 - Read the structure of the build menu
 - Detect if the addon is installed
 - Read terrain data of islands
+- Add ground textures for terrain on islands
 - Parse/Write ABO and ABL files
 
 What it can't do at the moment:
