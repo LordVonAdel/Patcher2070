@@ -4,6 +4,10 @@ import { XMLElement } from "../Common/XMLParser.js";
 
 /**
  * ISD files store data about island presets. All islands in Anno are premade and placed into the game world.
+ * 
+ * Nothing can be build on terrain under the height of 0.7 units.
+ * 
+ * Island can't be larger than 512 x 512 because of how the UsedChunks BitGrid is stored. 
  */
 export default class ISDAsset extends XMLAsset {
 
@@ -31,6 +35,8 @@ export default class ISDAsset extends XMLAsset {
     const chunkMapX = chunkMap.getInlineContent("Width");
     const chunkMapY = chunkMap.getInlineContent("Height");
     if (xSize != chunkMapX || ySize != chunkMapY) throw new Error("Terrain ChunkMap does not match usedChunks BitGrid");
+
+    this.validate();
   }
 
   /**
@@ -55,8 +61,16 @@ export default class ISDAsset extends XMLAsset {
     return Number(this.xml.getInlineContent("Clime"));
   }
 
+  set clime(value) {
+    this.xml.setInlineContent(value, "Clime");
+  } 
+
   get difficulty() {
     return Number(this.xml.getInlineContent("Difficulty"));
+  }
+
+  set difficulty(value) {
+    this.xml.setInlineContent(value, "Difficulty");
   }
 
   /**
@@ -75,6 +89,9 @@ export default class ISDAsset extends XMLAsset {
     this.xml.setInlineContent(value ? 1 : 0, "SendExplorationMessage");
   }
 
+  /**
+   * IDK what this value influences
+   */
   get seaLevel() {
     if (!this.xml) throw new Error("No data in Island");
     return +this.xml.getInlineContent("SeaLevel");
@@ -82,9 +99,12 @@ export default class ISDAsset extends XMLAsset {
 
   set seaLevel(value) {
     if (!this.xml) throw new Error("No data in Island");
-    this.xml.setInlineContent(value, "SeaLevel");
+    this.xml.setInlineContent(+value, "SeaLevel");
   }
 
+  /**
+   * Number of cells on the side of a chunk. Chunks are square so total number of cells in a chunk: 16 * 16 = 256
+   */
   static CHUNK_SIZE = 16;
 
   /**
@@ -124,16 +144,30 @@ export default class ISDAsset extends XMLAsset {
     heightBuffer.writeFloatLE(height, tileIndex * 4);
   }
 
+  /**
+   * Sets the height for all vertices of the island
+   * @param {Number} height 
+   */
   clearTerrainHeight(height) {
     const chunks = this.getAllChunks();
     for (let chunk of chunks) chunk.clearHeight(height);
   }
 
+  /**
+   * Sets the texture weights for all vertices of the island
+   * @param {TextureWeights} weights 
+   */
   clearTerrainTextureWeights(weights) {
     const chunks = this.getAllChunks();
     for (let chunk of chunks) chunk.clearTextureWeights(weights);
   }
 
+  /**
+   * Gets the texture weights at a position on the island
+   * @param {number} x X Position
+   * @param {number} y Y Position
+   * @returns {TextureWeights}
+   */
   getTextureWeightsAtLocation(x, y) {
     const chunk = this.getChunkAtLocation(x, y);
     return chunk.getTextureWeightsAtPosition(x - chunk.positionX, y - chunk.positionY);
@@ -184,6 +218,10 @@ export default class ISDAsset extends XMLAsset {
     return new IslandChunk(chunkIndexX, chunkIndexY, chunks[chunkIndex]);
   }
 
+  /**
+   * Gets all objects on the island
+   * @returns {IslandObject[]}
+   */
   getAllObjects() {
     const gopManager = this.xml.findChild("m_GOPManager");
     const objectsGroup = gopManager.findChild("Objects");
@@ -203,6 +241,11 @@ export default class ISDAsset extends XMLAsset {
     return out;
   }
 
+  /**
+   * Creates an object and adds it to the island
+   * @param {"Handle"|"Feedback"|"Simple"|"Nature"|"Grass"} type Type of the object
+   * @returns {IslandObject}
+   */
   createObject(type) {
     if (this._nextObjectId == -1) {
       this._nextObjectId = this.getAllObjects().reduce((acc, curr) => Math.max(acc, curr), 0) + 1;
@@ -348,7 +391,23 @@ export default class ISDAsset extends XMLAsset {
       objCameraBlockerShapes.addNGon(blocker.map((p) => [p[0], 0, p[1]]));
     }
 
-    return OBJ.CombineToFile([objTerrain, objCoastBuildingLines, objSurfLines, objBuildBlockerShapes, objCameraBlockerShapes]);
+    // ==== GOP HeightMap v2 ====
+    const objHeightMapV2 = new OBJ("HeightMapV2");
+    const heightMapV2 = this.xml.findChild("m_GOPManager").findChild("m_GRIDManager").findChild("m_HeightMap_v2").getInlineContent();
+
+    for (let j = 0; j < this.height; j++) {
+      for (let i = 0; i < this.height; i++) {
+        const h0 = heightMapV2.readInt16LE((j * this.width + i) * 2) / 1000;
+        objHeightMapV2.addNGon([
+          [i, h0, j],
+          [i + 1, h0, j],
+          [i + 1, h0, j + 1],
+          [i, h0, j + 1]
+        ]);
+      }
+    }
+
+    return OBJ.CombineToFile([objTerrain, objCoastBuildingLines, objSurfLines, objBuildBlockerShapes, objCameraBlockerShapes, objHeightMapV2]);
   }
 
   validate() {
@@ -364,13 +423,28 @@ export default class ISDAsset extends XMLAsset {
       if (ids.includes(object.id)) throw new Error("Object ID was already used!");
       ids.push(object.id);
     }
+
+    // Used chunks
+    const usedChunks = this.xml.findChild("UsedChunks");
+    const xSize = usedChunks.getInlineContent("m_XSize");
+    const ySize = usedChunks.getInlineContent("m_YSize"); // All islands in the game are square
+    if (this.width / xSize != ISDAsset.CHUNK_SIZE || this.height / ySize != ISDAsset.CHUNK_SIZE) throw new Error("Chunk bitmap / Island size mismatch");
+
+    const usedChunksBuffer = usedChunks.getInlineContent("m_BitGrid");
+    if (usedChunksBuffer.length != xSize * 4) throw new Error(`Used chunks buffer size mismatch (${usedChunksBuffer.length} for ${xSize} x ${ySize})`);
+    
+    for (let i = 0; i < ySize; i++) {
+      console.log(i.toString(10).padStart(2, "0") + ": " + usedChunksBuffer.readUInt32LE(i * 4).toString(2).padStart(32, "0"));
+    }
   }
 
   recalculate() {
-    this.recalculateHeightMaps();  
+    this.recalculateHeightMaps(); 
+    this.recalculateUsedChunks();
   }
 
   recalculateHeightMaps() {
+    // This influences where the player can build.
     const heightMapV2 = this.xml.findChild("m_GOPManager").findChild("m_GRIDManager").findChild("m_HeightMap_v2");
 
     /**
@@ -380,16 +454,141 @@ export default class ISDAsset extends XMLAsset {
 
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
-        const bufferOffset = (y * this.height + x) * 2;
-        const targetHeight = this.getTerrainHeightAtLocation(x, y);
+        const bufferOffset = (y * this.width + x) * 2;
+        const targetHeight = Math.max((this.getTerrainHeightAtLocation(x, y) + 0.016) * 1000, -32768);
+        heightBuffer.writeInt16LE(targetHeight, bufferOffset);
+      }
+    }
+  }
 
-        // -32768 - 32767
+  recalculateUsedChunks() {
+    const usedChunks = this.xml.findChild("UsedChunks");
+    usedChunks.setInlineContent(this.width / ISDAsset.CHUNK_SIZE, "m_XSize");  // number of chunks in x-direction
+    usedChunks.setInlineContent(this.height / ISDAsset.CHUNK_SIZE, "m_YSize"); // number of chunks in y-direction
+    usedChunks.setInlineContent(1, "m_IntXSize"); // what does m_IntXSize do?
 
-        // ToDo: Find out how this number works
-        const h = heightBuffer.readInt16LE(bufferOffset);
-        const hFormatted = ((targetHeight + 40) / 80) * (32768 + 32767) - 32768;
+    const usedChunksBuffer = Buffer.alloc(this.width / ISDAsset.CHUNK_SIZE * 4);
+    for (let i = 0; i < this.height / ISDAsset.CHUNK_SIZE; i++) {
+      usedChunksBuffer.writeUInt32LE(0xFFFFFFFF, i * 4);  // set all chunks to used
+    }
+    usedChunks.setInlineContent(usedChunksBuffer, "m_BitGrid");
+  }
 
-        // heightBuffer.writeInt16LE(targetHeight * 1024, bufferOffset);
+  /**
+   * Generates an empty island with the given dimensions.
+   * @param {*} width 
+   * @param {*} height 
+   */
+  async generate(width, height) {
+    if (width % ISDAsset.CHUNK_SIZE !== 0) throw new Error("Width must be a multiple of " + ISDAsset.CHUNK_SIZE);
+    if (height % ISDAsset.CHUNK_SIZE !== 0) throw new Error("Height must be a multiple of " + ISDAsset.CHUNK_SIZE);
+
+    this.xml = new XMLElement("Island");
+    this.xml.setInlineContent(width, "Width");
+    this.xml.setInlineContent(height, "Height");
+    this.clime = 0;
+    this.difficulty = 0;
+    this.xml.addChild(new XMLElement("UsedChunks"));
+    this.xml.addChild(new XMLElement("BuildBlockerShapes"));
+    this.xml.addChild(new XMLElement("CamBlockerShapes"));
+    this.xml.addChild(new XMLElement("SurfLines"));
+    this.xml.addChild(new XMLElement("CoastBuildingLines"));
+    this.xml.addChild(new XMLElement("Lakes"));
+    this.xml.addChild(new XMLElement("Rivers"));
+
+    // RiverGrid
+    const riverGrid = new XMLElement("RiverGrid");
+    riverGrid.setInlineContent(width, "m_XSize");
+    riverGrid.setInlineContent(height, "m_YSize");
+    riverGrid.setInlineContent(6, "m_IntXSize");
+    riverGrid.setInlineContent(Buffer.alloc(width * height / 8), "m_BitGrid");
+    this.xml.addChild(riverGrid);
+
+    this.seaLevel = 0;
+    this.xml.addChild(new XMLElement("Sandbanks"));
+    this.xml.addChild(new XMLElement("Fogbanks"));
+    this.xml.addChild(new XMLElement("TerrainNormalSplines"));
+
+    // AnimalLayer
+    const animalLayer = new XMLElement("AnimalLayer");
+    this.xml.addChild(animalLayer);
+    for (let i = 0; i <= 8; i++) {
+      const animalLayerEntry = new XMLElement("AnimalLayer" + (i == 0) ? "" : i.toString());
+      animalLayerEntry.addChild(new XMLElement("m_AnchorPoint"));
+      animalLayerEntry.addChild(new XMLElement("m_Connections"));
+      animalLayer.addChild(animalLayerEntry);
+    }
+
+    this.xml.addChild(new XMLElement("AIPoints"));
+    this.xml.addChild(new XMLElement("ConstructionRecords"));
+    this.xml.addChild(new XMLElement("Volcanos"));
+    this.sendExplorationMessage = 1;
+
+    // m_GOPManager
+    const m_GOPManager = new XMLElement("m_GOPManager");
+    this.xml.addChild(m_GOPManager);
+
+    // - m_GRIDManager
+    const gridManager = new XMLElement("m_GRIDManager");
+    m_GOPManager.addChild(gridManager);
+    gridManager.setInlineContent(Buffer.alloc(this.width * this.height * 2), "m_HeightMap_v2");
+
+    for (const grid of ["m_PathBlockerLayer", "m_HeightPathBlockerLayer", "m_SubmarineBlockerLayer"]) {
+      const layer = new XMLElement(grid);
+      const bitGrid = new XMLElement("BitGrid");
+      bitGrid.setInlineContent(this.width * 2, "m_XSize");
+      bitGrid.setInlineContent(this.height * 2, "m_YSize");
+      bitGrid.setInlineContent(12, "m_IntXSize");
+      bitGrid.setInlineContent(Buffer.alloc((this.width * 2) * (this.height * 2) / 8), "m_BitGrid");
+      layer.addChild(bitGrid);
+      gridManager.addChild(layer);
+
+      if (grid == "m_SubmarineBlockerLayer") {
+        layer.setInlineContent(-98304, "SubmarineLevelHeight")
+        layer.setInlineContent(0, "SubmarineIslandBlockerRadius")
+      }
+    }
+
+    // - m_StreetGrid
+    m_GOPManager.setInlineContent(Buffer.alloc(this.width * this.height), "m_StreetGrid")
+
+    // - Objects
+    const objects = new XMLElement("Objects");
+    m_GOPManager.addChild(objects);
+
+    for (const type of ["Handle", "Feedback", "Simple", "Nature", "Grass"]) {
+      const typeGroup = new XMLElement(type);
+      typeGroup.addChild(new XMLElement("Objects"));
+      objects.addChild(typeGroup);
+    }
+
+    // - other m_GOPManager stuff
+    m_GOPManager.addChild(new XMLElement("SnapPartner"));
+    m_GOPManager.addChild(new XMLElement("ObjectNames"));
+    m_GOPManager.addChild(new XMLElement("ObjectGroups"));
+
+    // Terrain
+    const terrain = new XMLElement("Terrain");
+    this.xml.addChild(terrain);
+    terrain.setInlineContent(3, "Version");
+    terrain.setInlineContent(this.width, "TileCountX");
+    terrain.setInlineContent(this.height, "TileCountZ");
+    terrain.setInlineContent(0, "TileCount"); // Don't ask me why this is zero
+
+    const chunkMap = new XMLElement("ChunkMap");
+    terrain.addChild(chunkMap);
+    chunkMap.setInlineContent(this.width / ISDAsset.CHUNK_SIZE, "Width");
+    chunkMap.setInlineContent(this.height / ISDAsset.CHUNK_SIZE, "Height");
+
+    for (let y = 0; y < this.height / ISDAsset.CHUNK_SIZE; y++) {
+      for (let x = 0; x < this.width / ISDAsset.CHUNK_SIZE; x++) {
+        const chunk = new XMLElement("Element");
+        chunk.setInlineContent(-1, "VertexResolution");
+        chunk.setInlineContent(65536, "Flags");
+        chunkMap.addChild(chunk);
+
+        const chunkObject = new IslandChunk(x, y, chunk);
+        chunkObject.generateHeightMap(4);
       }
     }
   }
@@ -521,8 +720,14 @@ class IslandChunk {
   }
 
   generateHeightMap(resolution) {
-    const heightMap = this.xml.findChild("HeightMap");
-    heightMap.setInlineContent(resolution, "VertexResolution");
+    let heightMap = this.xml.findChild("HeightMap");
+
+    if (!heightMap) {
+      heightMap = new XMLElement("HeightMap");
+      this.xml.addChild(heightMap);
+    }
+
+    this.xml.setInlineContent(resolution, "VertexResolution");
     heightMap.setInlineContent(Math.pow(2, resolution) + 1, "Width");
     const buff = Buffer.alloc(this.heightMapWidth * this.heightMapWidth * 4);
     heightMap.setInlineContent(buff, "Data");
@@ -550,6 +755,10 @@ class IslandChunk {
     targetLayer.setWeight(chunkX, chunkY, weight);
   }
 
+  /**
+   * Sets the texture weights for all vertices on the chunk
+   * @param {TextureWeights} weights 
+   */
   clearTextureWeights(weights) {
     if (this.vertexResolution < 0) return; // -1 for chunks without surface
 
@@ -756,12 +965,17 @@ class IslandObject {
 }
 
 /**
+ * @typedef {{textureIndex: number, weight: number}} TextureWeights
+ */
+
+
+/**
  * SeaLevel:                Read + Write
- * Width:                   Read
- * Height:                  Read
+ * Width:                   Read + Write
+ * Height:                  Read + Write
  * Clime:                   Read + Write
  * Difficulty:              Read + Write
- * UsedChunks:
+ * UsedChunks:              Write
  * BuildBlockerShapes:      Read
  * CamBlockerShapes:        Read
  * SurfLines:               Read
@@ -788,5 +1002,5 @@ class IslandObject {
  *  - Height Map:           Read + Write
  *  - TexIndexData:         Read + Write
  *  - Flags:                Read + Write  
- *  - VertexResolution:     Read
+ *  - VertexResolution:     Read + Write
  */
