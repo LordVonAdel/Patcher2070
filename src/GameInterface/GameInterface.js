@@ -13,8 +13,21 @@ import IconsAPI from './IconsAPI.js';
 import LevelAPI from "./LevelAPI.js";
 import GamePropertiesAsset from '../XML/GamePropertiesAsset.js';
 import ModelAPI from './ModelAPI.js';
+import MissionAPI from './MissionAPI.js';
+import TexturesAPI from './TexturesAPI.js';
 
 export default class GameInterface {
+
+  // Private fields
+  #assets = null;
+  #datasets = null;
+  #items = null;
+  #engineIni = null;
+  #properties = null;
+  #failedRDAs = [];
+
+  // Public fields
+  isAddonInstalled = false;
 
   /**
    * @param {string} gameDirectory Installation directory of Anno 2070
@@ -31,11 +44,6 @@ export default class GameInterface {
      * @type {Object<string, FileIndex>}
      */
     this.fileIndex = {};
-
-    /**
-     * @private
-     */
-    this.failedRDAs = [];
 
     /**
      * @type {ProductsAPI}
@@ -73,31 +81,14 @@ export default class GameInterface {
     this.modelAPI = new ModelAPI(this);
 
     /**
-     * @private
+     * @type {MissionAPI}
      */
-    this.assets = null;
+    this.missionAPI = new MissionAPI(this);
 
     /**
-     * @private
+     * @type {TexturesAPI}
      */
-    this.datasets = null;
-
-    /**
-     * @private
-     */
-    this.items = null;
-
-    /**
-     * @private
-     */
-    this.engineIni = null;
-
-    /**
-     * @private
-     */
-    this.properties = null;
-
-    this.isAddonInstalled = true;
+    this.texturesAPI = new TexturesAPI(this);
 
     /**
      * @type {LangID}
@@ -144,7 +135,7 @@ export default class GameInterface {
       try {
         await rda.readFile(filepath);
       } catch (e) {
-        this.failedRDAs.push({
+        this.#failedRDAs.push({
           filepath: filepath, error: e
         });
         continue;
@@ -220,60 +211,63 @@ export default class GameInterface {
   }
 
   async getDatasets() {
-    if (this.datasets) return this.datasets;
+    if (this.#datasets) return this.#datasets;
 
     const file = await this.getGameFile("data/config/game/datasets.xml");
     if (!file) throw new Error("No datasets file found!");
-    this.datasets = new DatasetsAsset();
-    this.datasets.readData(file);
-    return this.datasets;
+    this.#datasets = new DatasetsAsset();
+    this.#datasets.readData(file);
+    return this.#datasets;
   }
 
+  /**
+   * @returns {Promise<Assets>}
+   */
   async getAssets() {
-    if (this.assets) return this.assets;
+    if (this.#assets) return this.#assets;
 
     const mainFile = await this.getGameFile("data/config/game/assets.xml");
     if (!mainFile) throw new Error("No assets file found!");
-    this.assets = new Assets();
-    this.assets.readData(mainFile);
+    this.#assets = new Assets();
+    this.#assets.readData(mainFile);
 
     if (this.isAddonInstalled) {
       const addonFile = await this.getGameFile("addondata/config/balancing/addon_01_assets.xml");
       const addonAssets = new Assets();
       addonAssets.readData(addonFile);
-      this.assets.merge(addonAssets);
+      this.#assets.merge(addonAssets);
     }
 
-    return this.assets;
+    return this.#assets;
   }
 
   async getItems() {
-    if (this.items) return this.items;
+    if (this.#items) return this.#items;
 
     const file = await this.getGameFile("data/config/features/items.xml");
     if (!file) throw new Error("No items file found!");
-    this.items = new Items();
-    this.items.readData(file);
-    return this.items;
+    this.#items = new Items();
+    this.#items.readData(file);
+    return this.#items;
   }
 
   async getEngineIni() {
-    if (this.engineIni) return this.engineIni;
+    if (this.#engineIni) return this.#engineIni;
 
     const path = EngineIni.GetDefaultFilePath();
-    this.engineIni = new EngineIni();
-    await this.engineIni.readFile(path);
-    return this.engineIni;
+    this.#engineIni = new EngineIni();
+    await this.#engineIni.readFile(path);
+    return this.#engineIni;
   }
 
   async getProperties() {
-    if (this.properties) return this.properties;
+    if (this.#properties) return this.#properties;
 
     const file = await this.getGameFile("data/config/game/properties.xml");
     if (!file) throw new Error("No Properties file found!");
-    this.properties = new GamePropertiesAsset();
-    this.properties.readData(file);
-    return this.properties;
+    this.#properties = new GamePropertiesAsset();
+    this.#properties.readData(file);
+    return this.#properties;
   }
 
   /**
@@ -285,16 +279,16 @@ export default class GameInterface {
    * @param {boolean} patchMaindata Overwrite main file instead of just editing Patch9 ?
    */
   async patch(patchMaindata = false) {
-    if (this.assets) {
-      this.fileIndex["data/config/game/assets.xml"].updateContent(this.assets.writeData());
+    if (this.#assets) {
+      this.fileIndex["data/config/game/assets.xml"].updateContent(this.#assets.writeData());
     }
     
-    if (this.properties) {
-      this.fileIndex["data/config/game/properties.xml"].updateContent(this.properties.writeData());
+    if (this.#properties) {
+      this.fileIndex["data/config/game/properties.xml"].updateContent(this.#properties.writeData());
     }
 
-    if (this.engineIni) {
-      this.engineIni.writeToFile(EngineIni.GetDefaultFilePath());
+    if (this.#engineIni) {
+      this.#engineIni.writeToFile(EngineIni.GetDefaultFilePath());
     }
 
     const patch9 = Path.join(this.gameDirectory, "maindata", "patch9.rda");
@@ -353,10 +347,14 @@ export default class GameInterface {
 
   /**
    * Sets the content of a maindata file
-   * @param {Buffer} content content of the file
+   * @param {Buffer|String} content content of the file
    * @param {string} gamePath path inside RDA
    */
   async updateFile(content, gamePath) {
+    if (typeof content === "string") content = Buffer.from(content);
+
+    gamePath = gamePath.replace(/\\/g, "/");
+
     if (!(gamePath in this.fileIndex)) {
       this.fileIndex[gamePath] = new FileIndex(gamePath, null);
     }
@@ -407,7 +405,7 @@ export default class GameInterface {
   async loadMod(path) {
     const mod = await import("File:\\" + path);
     console.log("Loading mod: ", mod.default.title);
-    await mod.default.run(this);
+    await mod.default.run(this, Path.dirname(path));
   }
 }
 
