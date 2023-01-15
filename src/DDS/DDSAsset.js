@@ -43,6 +43,12 @@ export default class DDSAsset extends FileAsset {
     this.rgba = null;
   }
 
+  generate(width, height) {
+    this.width = width;
+    this.height = height;
+    this.rgba = Buffer.alloc(width * height * 4);
+  }
+
   /**
    * @param {Buffer} data 
    */
@@ -130,13 +136,33 @@ export default class DDSAsset extends FileAsset {
   }
 
   /**
+   * @param {Number} x X Position of the pixel
+   * @param {Number} y Y Position of the pixel
+   * @param {Color} color Color of the pixel
+   */
+  setPixel(x, y, color) {
+    if (!this.rgba) throw new Error("No image loaded");
+    if (x < 0 || x >= this.width) throw new Error("X coordinate out of bounds");
+    if (y < 0 || y >= this.height) throw new Error("Y coordinate out of bounds");
+
+    const index = (y * this.width + x) * 4;
+    this.rgba[index] = color.r * 255;
+    this.rgba[index + 1] = color.g * 255;
+    this.rgba[index + 2] = color.b * 255;
+    this.rgba[index + 3] = color.a * 255;
+  }
+
+  /**
    * @param {Number} x 
    * @param {Number} y 
    * @returns {Color}
    */
   sample(u, v) {
     // @ToDo: use something different that nearest neighbor
-    return this.getPixel(Math.floor(u * this.width), Math.floor(v * this.height));
+    return this.getPixel(
+      Math.min(Math.floor(u * this.width), this.width - 1),
+      Math.min(Math.floor(v * this.height), this.height - 1)
+    );
   }
 
   /**
