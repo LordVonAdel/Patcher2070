@@ -306,8 +306,9 @@ class RDABlock {
 
     const files = this.files.filter(file => !file.isDeleted);
 
-    let dataBlock = Buffer.alloc(0);
-    let headerBlock = Buffer.alloc(0);
+    const headerBlocks = [];
+    const dataBlocks = [];
+    let totalDataSize = 0;
 
     this.reader.log(`Writing ${files.length} files...`);
     for (let file of files) {
@@ -315,14 +316,18 @@ class RDABlock {
 
       const header = Buffer.alloc(540);
       header.write(file.path, 0, 520, "utf16le");
-      header.writeUInt32LE(dataBlock.length, 520);
+      header.writeUInt32LE(totalDataSize, 520);
       header.writeUInt32LE(content.length, 524); // Compressed file size
       header.writeUInt32LE(content.length, 528); // Uncompressed file size
       header.writeUInt32LE(0, 532); // Timestamp
 
-      headerBlock = Buffer.concat([headerBlock, header]);
-      dataBlock = Buffer.concat([dataBlock, content]);
+      headerBlocks.push(header);
+      dataBlocks.push(content);
+      totalDataSize += content.length;
     }
+
+    const dataBlock = Buffer.concat(dataBlocks);
+    const headerBlock = Buffer.concat(headerBlocks);
 
     this.reader.log("Compressing...");
     const dataBlockSize = dataBlock.length;
