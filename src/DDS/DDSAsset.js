@@ -130,6 +130,16 @@ export default class DDSAsset extends FileAsset {
   }
 
   /**
+   * @param {Number} x 
+   * @param {Number} y 
+   * @returns {Color}
+   */
+  sample(u, v) {
+    // @ToDo: use something different that nearest neighbor
+    return this.getPixel(Math.floor(u * this.width), Math.floor(v * this.height));
+  }
+
+  /**
    * @param {number} x 
    * @param {number} y 
    * @param {number} width 

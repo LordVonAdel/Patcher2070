@@ -1,6 +1,7 @@
 import OBJ from "../Common/OBJ.js";
 import XMLAsset from "../Common/XMLAsset.js";
 import { XMLElement } from "../Common/XMLParser.js";
+import DDSAsset from "../DDS/DDSAsset.js";
 
 /**
  * ISD files store data about island presets. All islands in Anno are premade and placed into the game world.
@@ -8,8 +9,18 @@ import { XMLElement } from "../Common/XMLParser.js";
  * Nothing can be build on terrain under the height of 0.7 units.
  * 
  * Island can't be larger than 512 x 512 because of how the UsedChunks BitGrid is stored. 
+ * 
+ * 
+ * Directions:
+ * -1: X-
+ *  0: Z- 
+ *  1: X+
+ *  2: Z+
  */
+
 export default class ISDAsset extends XMLAsset {
+
+  static DIRECTION_MULTIPLIER = 368640;
 
   constructor() {
     super();
@@ -127,21 +138,7 @@ export default class ISDAsset extends XMLAsset {
   setTerrainHeightAtLocation(x, y, height) {
     if (!this.xml) throw new Error("No data in Island");
     const targetChunk = this.getChunkAtLocation(x, y);
-    targetChunk.setHeightAtIslandPosition();
-
-    const heightMap = targetChunk.findChild("HeightMap");
-    if (!heightMap) return;
-    const width = +heightMap.getInlineContent("Width");
-    const localX = Math.floor(x % ISDAsset.CHUNK_SIZE);
-    const localY = Math.floor(y % ISDAsset.CHUNK_SIZE);
-
-    /**
-     * @type {Buffer}
-     */
-    const heightBuffer = heightMap.getInlineContent("Data");
-    if (!heightBuffer) return;
-    const tileIndex = localX + localY * width;
-    heightBuffer.writeFloatLE(height, tileIndex * 4);
+    targetChunk.setHeightAtIslandPosition(x, y, height);
   }
 
   /**
@@ -151,6 +148,32 @@ export default class ISDAsset extends XMLAsset {
   clearTerrainHeight(height) {
     const chunks = this.getAllChunks();
     for (let chunk of chunks) chunk.clearHeight(height);
+  }
+
+  /**
+   * Applies a heightmap onto the terrain
+   * @param {DDSAsset} map 
+   */
+  setTerrainFromHeightmap(map, whiteLevel, blackLevel) {
+    const range = whiteLevel - blackLevel;
+
+    const chunks = this.getAllChunks();
+    for (let chunk of chunks) {
+      const localMapSize = chunk.heightMapWidth;
+      const buffer = Buffer.alloc(localMapSize * localMapSize * 4);
+
+      for (let x = 0; x < localMapSize; x++) {
+        for (let y = 0; y < localMapSize; y++) {
+          const globalX = chunk.positionX + (x / localMapSize) * ISDAsset.CHUNK_SIZE;
+          const globalY = chunk.positionY + (y / localMapSize) * ISDAsset.CHUNK_SIZE;
+          const index = y * localMapSize + x;
+          const value = map.sample(globalX / map.width, globalY / map.height).r;
+          buffer.writeFloatLE(blackLevel + value * range, index * 4);
+        }
+      }
+
+      chunk.setHeightData(buffer);
+    }
   }
 
   /**
@@ -274,17 +297,41 @@ export default class ISDAsset extends XMLAsset {
     const lines = this.xml.findChild("CoastBuildingLines").getChildrenOfType("i");
     for (const line of lines) {
       const points = line.findChild("Points").getChildrenOfType("i");
+      const directions = line.findChild("Directions").getChildrenOfType("i").map(i => +i.getInlineContent());
+
       const outLine = [];
-      for (const point of points) {
+      for (let i = 0; i < points.length; i++) {
+        const point = points[i];
+        const direction = directions[i] / ISDAsset.DIRECTION_MULTIPLIER;
+
         const buffer = point.getInlineContent();
         const x = buffer.readInt32LE(0) / (1 << 12);
         const z = buffer.readInt32LE(8) / (1 << 12);
-        outLine.push([x, z]);
+        outLine.push([x, z, direction]);
       }
       out.push(outLine);
     }
 
     return out;
+  }
+
+  /**
+   * @param {[[x, y, direction]]} points 
+   */
+  addCoastBuildingLine(points, directions) {
+    const line = this.xml.findChild("CoastBuildingLines").createChildTag("i");
+    const pointsNode = line.createChildTag("Points");
+    const directionsNode = line.createChildTag("Directions");
+
+    for (const point of points) {
+      const buffer = Buffer.alloc(16);
+      buffer.writeInt32LE(point[0] * (1 << 12), 0);
+      buffer.writeInt32LE(point[1] * (1 << 12), 8);
+      pointsNode.createChildTag("i").setInlineContent(buffer);
+
+      directionsNode.createChildTag("i").setInlineContent(point[2] * ISDAsset.DIRECTION_MULTIPLIER);
+    }
+
   }
 
   getSurfLines() {
@@ -367,7 +414,7 @@ export default class ISDAsset extends XMLAsset {
     const objCoastBuildingLines = new OBJ("CoastBuildingLines");
     const buildingLines = this.getCoastBuildingLines();
     for (const line of buildingLines) {
-      objCoastBuildingLines.addLineFromPoints(line.map((p) => [p[0], 0, p[1]]));
+      objCoastBuildingLines.addLineFromPoints(line.map((p) => [p[0], p[2], p[1]]));
     }
 
     // ==== Surf Lines ====
@@ -397,7 +444,7 @@ export default class ISDAsset extends XMLAsset {
 
     for (let j = 0; j < this.height; j++) {
       for (let i = 0; i < this.height; i++) {
-        const h0 = heightMapV2.readInt16LE((j * this.width + i) * 2) / 1000;
+        const h0 = heightMapV2.readInt16LE((j * this.width + i) * 2) / 1024;
         objHeightMapV2.addNGon([
           [i, h0, j],
           [i + 1, h0, j],
@@ -433,9 +480,9 @@ export default class ISDAsset extends XMLAsset {
     const usedChunksBuffer = usedChunks.getInlineContent("m_BitGrid");
     if (usedChunksBuffer.length != xSize * 4) throw new Error(`Used chunks buffer size mismatch (${usedChunksBuffer.length} for ${xSize} x ${ySize})`);
     
-    for (let i = 0; i < ySize; i++) {
-      console.log(i.toString(10).padStart(2, "0") + ": " + usedChunksBuffer.readUInt32LE(i * 4).toString(2).padStart(32, "0"));
-    }
+    // for (let i = 0; i < ySize; i++) {
+    //   console.log(i.toString(10).padStart(2, "0") + ": " + usedChunksBuffer.readUInt32LE(i * 4).toString(2).padStart(32, "0"));
+    // }
   }
 
   recalculate() {
@@ -455,7 +502,7 @@ export default class ISDAsset extends XMLAsset {
     for (let x = 0; x < this.width; x++) {
       for (let y = 0; y < this.height; y++) {
         const bufferOffset = (y * this.width + x) * 2;
-        const targetHeight = Math.max((this.getTerrainHeightAtLocation(x, y) + 0.016) * 1000, -32768);
+        const targetHeight = Math.max((this.getTerrainHeightAtLocation(x, y) + 0.016) * 1024, -32768);
         heightBuffer.writeInt16LE(targetHeight, bufferOffset);
       }
     }
@@ -513,7 +560,7 @@ export default class ISDAsset extends XMLAsset {
     const animalLayer = new XMLElement("AnimalLayer");
     this.xml.addChild(animalLayer);
     for (let i = 0; i <= 8; i++) {
-      const animalLayerEntry = new XMLElement("AnimalLayer" + (i == 0) ? "" : i.toString());
+      const animalLayerEntry = new XMLElement("AnimalLayer" + ((i == 0) ? "" : i.toString()));
       animalLayerEntry.addChild(new XMLElement("m_AnchorPoint"));
       animalLayerEntry.addChild(new XMLElement("m_Connections"));
       animalLayer.addChild(animalLayerEntry);
@@ -640,7 +687,7 @@ class IslandChunk {
     if (!heightData) return -40;
 
     const gridSize = this.heightMapWidth - 1;
-    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;;
+    const cellWidth = ISDAsset.CHUNK_SIZE / gridSize;
     chunkX /= cellWidth;
     chunkY /= cellWidth;
 
@@ -699,6 +746,12 @@ class IslandChunk {
     const heightData = heightMap.getInlineContent("Data");
     if (!heightData) return null;
     return heightData;
+  }
+
+  setHeightData(data) {
+    const existingData = this.getHeightData();
+    if (data.length != existingData.length) throw new Error("Wrong size of height data buffer!");
+    this.xml.findChild("HeightMap").setInlineContent(data, "Data");
   }
 
   get heightMapWidth() {
