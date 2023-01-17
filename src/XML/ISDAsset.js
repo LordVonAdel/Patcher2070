@@ -1,3 +1,4 @@
+import Color from "../Common/Color.js";
 import OBJ from "../Common/OBJ.js";
 import XMLAsset from "../Common/XMLAsset.js";
 import { XMLElement } from "../Common/XMLParser.js";
@@ -163,17 +164,26 @@ export default class ISDAsset extends XMLAsset {
       const buffer = Buffer.alloc(localMapSize * localMapSize * 4);
 
       for (let x = 0; x < localMapSize; x++) {
+        const globalX = chunk.positionX + (x / localMapSize) * ISDAsset.CHUNK_SIZE;
+        const pX = 1 - globalX / map.width;
+
         for (let y = 0; y < localMapSize; y++) {
-          const globalX = chunk.positionX + (x / localMapSize) * ISDAsset.CHUNK_SIZE;
           const globalY = chunk.positionY + (y / localMapSize) * ISDAsset.CHUNK_SIZE;
           const index = y * localMapSize + x;
-          const value = map.sample(globalX / map.width, globalY / map.height).r;
-          buffer.writeFloatLE(blackLevel + value * range, index * 4);
+
+          const value = map.sample(pX, globalY / map.height).r;
+
+          // Smoothstep because dds compression kills top values
+          const value2 = Math.min(value * value * (3 - 2 * value) + 0.1, 1);
+
+          buffer.writeFloatLE(blackLevel + value2 * range, index * 4);
         }
       }
 
       chunk.setHeightData(buffer);
     }
+
+    this.cull();
   }
 
   /**
@@ -194,6 +204,29 @@ export default class ISDAsset extends XMLAsset {
   getTextureWeightsAtLocation(x, y) {
     const chunk = this.getChunkAtLocation(x, y);
     return chunk.getTextureWeightsAtPosition(x - chunk.positionX, y - chunk.positionY);
+  }
+
+  /**
+   * Automatically applies texture weights based on height of terrain
+   */
+  autoTexture() {
+    const chunks = this.getAllChunks();
+    for (let chunk of chunks) {
+      if (!chunk.isUsed) continue;
+      chunk.autoTexture();
+    }
+  }
+
+  /**
+   * Automatically generate buildlines on coasts
+   */
+  autoCoast() {
+    const chunks = this.getAllChunks();
+    for (let chunk of chunks) {
+      if (!chunk.isUsed) continue;
+      
+
+    }
   }
 
   /**
@@ -454,7 +487,15 @@ export default class ISDAsset extends XMLAsset {
       }
     }
 
-    return OBJ.CombineToFile([objTerrain, objCoastBuildingLines, objSurfLines, objBuildBlockerShapes, objCameraBlockerShapes, objHeightMapV2]);
+    // ==== Objects ====
+    const objects = this.getAllObjects();
+    const objObjects = new OBJ("Objects");
+    for (const object of objects) {
+      const pos = object.getPosition();
+      objObjects.addLineFromPoints([pos, [pos[0], pos[1] + 1, pos[2]]]);
+    }
+
+    return OBJ.CombineToFile([objTerrain, objCoastBuildingLines, objSurfLines, objBuildBlockerShapes, objCameraBlockerShapes, objHeightMapV2, objObjects]);
   }
 
   validate() {
@@ -479,10 +520,6 @@ export default class ISDAsset extends XMLAsset {
 
     const usedChunksBuffer = usedChunks.getInlineContent("m_BitGrid");
     if (usedChunksBuffer.length != xSize * 4) throw new Error(`Used chunks buffer size mismatch (${usedChunksBuffer.length} for ${xSize} x ${ySize})`);
-    
-    // for (let i = 0; i < ySize; i++) {
-    //   console.log(i.toString(10).padStart(2, "0") + ": " + usedChunksBuffer.readUInt32LE(i * 4).toString(2).padStart(32, "0"));
-    // }
   }
 
   recalculate() {
@@ -499,26 +536,122 @@ export default class ISDAsset extends XMLAsset {
      */
     const heightBuffer = heightMapV2.getInlineContent();
 
-    for (let x = 0; x < this.width; x++) {
-      for (let y = 0; y < this.height; y++) {
-        const bufferOffset = (y * this.width + x) * 2;
-        const targetHeight = Math.max((this.getTerrainHeightAtLocation(x, y) + 0.016) * 1024, -32768);
-        heightBuffer.writeInt16LE(targetHeight, bufferOffset);
+    const chunks = this.getAllChunks();
+    for (const chunk of chunks) {
+      const chunkHeightMap = chunk.getHeightData();      
+
+      for (let x = 0; x < ISDAsset.CHUNK_SIZE; x++) {
+        const chunkX = chunk.chunkIndexX * ISDAsset.CHUNK_SIZE;
+        const chunkY = chunk.chunkIndexY * ISDAsset.CHUNK_SIZE;
+
+        const globalX = x + chunkX;
+        for (let y = 0; y < ISDAsset.CHUNK_SIZE; y++) {
+          const height = chunkHeightMap ? chunkHeightMap.readFloatLE((y * chunk.heightMapWidth + x) * 4) : -40;
+          const globalY = y + chunkY;
+          const targetHeight = Math.max(height * 1024, -32768);
+          const globalIndex = (globalX + globalY * this.width) * 2;
+          heightBuffer.writeInt16LE(targetHeight, globalIndex);
+        }
       }
     }
+
+    // for (let x = 0; x < this.width; x++) {
+    //   for (let y = 0; y < this.height; y++) {
+    //     const bufferOffset = (y * this.width + x) * 2;
+    //     const targetHeight = Math.max((this.getTerrainHeightAtLocation(x, y)) * 1024, -32768);
+    //     heightBuffer.writeInt16LE(targetHeight, bufferOffset);
+    //   }
+    // }
   }
 
   recalculateUsedChunks() {
+    const chunksX = this.width / ISDAsset.CHUNK_SIZE;
+    const chunksY = this.height / ISDAsset.CHUNK_SIZE;
+
     const usedChunks = this.xml.findChild("UsedChunks");
-    usedChunks.setInlineContent(this.width / ISDAsset.CHUNK_SIZE, "m_XSize");  // number of chunks in x-direction
-    usedChunks.setInlineContent(this.height / ISDAsset.CHUNK_SIZE, "m_YSize"); // number of chunks in y-direction
+    usedChunks.setInlineContent(chunksX, "m_XSize");  // number of chunks in x-direction
+    usedChunks.setInlineContent(chunksY, "m_YSize"); // number of chunks in y-direction
     usedChunks.setInlineContent(1, "m_IntXSize"); // what does m_IntXSize do?
 
-    const usedChunksBuffer = Buffer.alloc(this.width / ISDAsset.CHUNK_SIZE * 4);
-    for (let i = 0; i < this.height / ISDAsset.CHUNK_SIZE; i++) {
-      usedChunksBuffer.writeUInt32LE(0xFFFFFFFF, i * 4);  // set all chunks to used
+    const usedChunksBuffer = Buffer.alloc(chunksY * 4);
+
+    for (let y = 0; y < chunksY; y++) {
+      let int = 0xFFFFFFFF;
+
+      for (let x = 0; x < chunksX; x++) {
+        const chunk = this.getChunkAtLocation(x * ISDAsset.CHUNK_SIZE + 1, y * ISDAsset.CHUNK_SIZE + 1);
+        if (!chunk.isUsed) {
+          const mask = ~(1 << (x));
+          int = (int & mask) >>> 0;
+        }
+      }
+
+      usedChunksBuffer.writeUInt32LE(int, y * 4);
     }
     usedChunks.setInlineContent(usedChunksBuffer, "m_BitGrid");
+  }
+
+  /**
+   * Disables all chunks under the threshold.
+   * @param {Number} cutoff the threshold
+   */
+  cull(cutoff = -20) {
+    const chunks = this.getAllChunks();
+    for (const chunk of chunks) {
+      if (!chunk.isUsed) continue;
+
+      const heightBuffer = chunk.getHeightData();
+      let max = -Infinity;
+      for (let i = 0; i < heightBuffer.length; i += 4) {
+        max = Math.max(max, heightBuffer.readFloatLE(i));
+      }
+      if (max < cutoff) chunk.unUse();
+    }
+
+    this.recalculateUsedChunks();
+  }
+
+  /**
+   * @returns {DDSAsset}
+   */
+  generateMinimap(size) {
+    const dds = new DDSAsset();
+    dds.generate(size, size);
+
+    // Holds only 1 height per cell, but way enough for minimap
+    const heightBufferV2 = this.xml.findChild("m_GOPManager").findChild("m_GRIDManager").findChild("m_HeightMap_v2").getInlineContent();
+
+    const color = new Color();
+    for (let x = 0; x < size; x++) {
+      const globalX = Math.floor((x / size) * this.width);
+      for (let y = 0; y < size; y++) {
+        const globalY = Math.floor((y / size) * this.height);
+
+        const terrainHeight = heightBufferV2.readInt16LE((globalY * this.width + globalX) * 2) / 1024;
+        //const terrainHeight = this.getTerrainHeightAtLocation((x / size) * this.width, (y / size) * this.height);
+
+        color.g = 0; //Math.max(Math.min(1 - Math.abs(terrainHeight - 1), 1), 0);
+        color.a = Math.max(Math.min((terrainHeight + 5) / 5, 1), 0);
+        color.r = 0.7;
+        color.b = 0.7;
+
+        dds.setPixel(x, size - y - 1, color);
+      }
+    }
+
+    return dds;
+  }
+
+  scatterObjects(type, guid, amount) {
+    for (let i = 0; i < amount; i++) {
+      const x = Math.random() * this.width;
+      const z = Math.random() * this.height;
+      const y = this.getTerrainHeightAtLocation(x, z);
+      if (y < 0.3) continue;
+      const obj = this.createObject(type);
+      obj.setPosition(x, y, z);
+      obj.guid = guid;
+    }
   }
 
   /**
@@ -693,7 +826,7 @@ class IslandChunk {
 
     if (chunkX < 0 || chunkY < 0) throw new Error("Position outside of chunk");
     if (chunkX > this.heightMapWidth || chunkY > this.heightMapWidth) throw new Error("Position outside of chunk");
-    const tileIndex = chunkX + chunkY * this.heightMapWidth;
+    const tileIndex = Math.floor(chunkX) + Math.floor(chunkY) * this.heightMapWidth;
     return heightData.readFloatLE(tileIndex * 4);
   }
 
@@ -724,7 +857,7 @@ class IslandChunk {
     chunkX /= cellWidth;
     chunkY /= cellWidth;
 
-    const tileIndex = chunkX + chunkY * this.heightMapWidth;
+    const tileIndex = Math.floor(chunkX) + Math.floor(chunkY) * this.heightMapWidth;
     return heightData.writeFloatLE(height, tileIndex * 4);
   }
 
@@ -762,6 +895,10 @@ class IslandChunk {
 
   get vertexResolution() {
     return Number(this.xml.getInlineContent("VertexResolution"));
+  }
+
+  get isUsed() {
+    return this.vertexResolution > -1;
   }
 
   get flags() {
@@ -806,6 +943,32 @@ class IslandChunk {
       targetLayer = this.generateTextureLayer(textureIndex);
     }
     targetLayer.setWeight(chunkX, chunkY, weight);
+  }
+
+  /**
+   * Automatically generates texture weights based on height
+   */
+  autoTexture() {
+    this.clearTextureWeights({});
+    const layerBeach = this.generateTextureLayer(77);
+    const layerGrass = this.generateTextureLayer(75);
+    const layerRock  = this.generateTextureLayer(74);
+
+    const bufferBeach = layerBeach.getAlphaBuffer();
+    const bufferGrass = layerGrass.getAlphaBuffer();
+    const bufferRock  = layerRock.getAlphaBuffer();
+    const bufferHeight = this.getHeightData();
+
+    for (let x = 0; x < layerBeach.width; x++) {
+      for (let y = 0; y < layerBeach.width; y++) {
+        const index = y * layerBeach.width + x;
+
+        const h = bufferHeight.readFloatLE(index * 4);
+        bufferBeach[index] = (h < 0.5) ? 255 : 0;
+        bufferGrass[index] = (h > 0.4 && h < 1.3) ? 255 : 0;
+        bufferRock[index]  = (h > 1.2) ? 255 : 0;
+      }
+    }
   }
 
   /**
@@ -894,6 +1057,12 @@ class IslandChunk {
     //   if (texLayer.width != mapWidth) throw new Error("Texture and height map are not in same scale!!!");
     // }
   }
+
+  unUse() {
+    this.xml.setInlineContent(-1, "VertexResolution");
+    const hMap = this.xml.findChild("HeightMap");
+    if (hMap) this.xml.removeChild(hMap);
+  }
 }
 
 class TextureLayer {
@@ -936,6 +1105,14 @@ class TextureLayer {
     alphaMapContent[localX + localY * alphaMapWidth] = Math.floor(weight * 255);
   }
 
+  /**
+   * @returns {Buffer}
+   */
+  getAlphaBuffer() {
+    const alphaMap = this.xml.findChild("AlphaMap");
+    return alphaMap.getInlineContent("data");
+  }
+
   clear(value) {
     const alphaMap = this.xml.findChild("AlphaMap");
     const alphaMapContent = alphaMap.getInlineContent("data");
@@ -943,12 +1120,7 @@ class TextureLayer {
   }
 
   isZero() {
-    const alphaMap = this.xml.findChild("AlphaMap");
-    
-    /**
-     * @type {Buffer}
-     */
-    const alphaMapContent = alphaMap.getInlineContent("data");
+    const alphaMapContent = this.getAlphaBuffer();
     return !alphaMapContent.some((value, index, uint8) => value > 0);
   }
 
@@ -989,14 +1161,28 @@ class IslandObject {
   get variation() { return +this.xml.getInlineContent("m_Variation"); }
   set variation(value) { return this.xml.setInlineContent(value, "m_Variation"); }
 
-  get position() { return this.xml.getInlineContent("m_Position"); }
-  set position(value) { return this.xml.setInlineContent(value, "m_Position"); }
-  
   get playerId() { return +this.xml.getInlineContent("m_PlayerID"); }
   set playerId(value) { return this.xml.setInlineContent(value, "m_PlayerID"); }
   
   get direction() { return this.xml.getInlineContent("m_Direction"); }
   set direction(value) { return this.xml.setInlineContent(value, "m_Direction"); }
+
+  setPosition(x, y, z) {
+    const buffer = Buffer.alloc(24);
+    buffer.writeInt32LE(x * 4096, 0);
+    buffer.writeInt32LE(z * 4096, 8);
+    buffer.writeInt32LE(y * 4096, 16);
+    this.xml.setInlineContent(buffer, "m_Position");
+  }
+
+  getPosition() {
+    const buffer = this.xml.getInlineContent("m_Position");
+    return [
+      buffer.readInt32LE(0) / 4096, 
+      buffer.readInt32LE(16) / 4096, 
+      buffer.readInt32LE(8)/ 4096
+    ];
+  }
 
   /**
    * 
@@ -1012,6 +1198,12 @@ class IslandObject {
     obj.direction = 0;
     obj.guid = 337;
     obj.id = 1;
+
+    if (type == "Nature") {
+      const nature = xml.createChildTag("Nature");
+      nature.setInlineContent(1, "m_Scale");
+      nature.setInlineContent(Buffer.alloc(16), "m_Orientation"); // Quaternion?
+    }
 
     return obj;
   }
