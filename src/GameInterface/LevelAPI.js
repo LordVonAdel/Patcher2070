@@ -102,4 +102,23 @@ export default class LevelAPI {
 
     return guid;
   }
+
+  createIsland() {
+    return new ISDAsset();
+  }
+
+  createWorld() {
+    return new WWWAsset();
+  }
+
+  async registerWorld(wwwAsset, filepath) {
+    filepath = filepath.replace(/\\/g, "/");
+    await this.#api.updateFile(wwwAsset.writeData(), filepath + ".www");
+    await this.#api.updateFile("<Group><ToolOneVersion>7</ToolOneVersion></Group>", filepath + "_aiprofiles.xml");
+    await this.#api.updateFile("<Group><ToolOneVersion>7</ToolOneVersion></Group>", filepath + "_assets.xml");
+    await this.#api.updateFile("<Group><ToolOneVersion>7</ToolOneVersion></Group>", filepath + "_features.xml");
+    await this.#api.updateFile("<Group><ToolOneVersion>7</ToolOneVersion></Group>", filepath + "_quests.xml");
+    await this.#api.updateFile("<Group><ToolOneVersion>7</ToolOneVersion></Group>", filepath + "_texts.xml");
+    await this.#api.updateFile(await this.#api.getGameFile("data/levels/scenarios/singleplayer/01.png"), filepath + ".png");
+  }
 }
