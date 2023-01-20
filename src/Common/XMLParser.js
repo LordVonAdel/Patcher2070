@@ -184,9 +184,15 @@ export class XMLElement {
     this.content.push(element);
   }
 
+  addChildAtIndex(element, index) {
+    this.content.splice(index, 0, element);
+  }
+
   removeChild(element) {
     const index = this.content.indexOf(element);
-    if (index >= 0) this.content.splice(index, 1);
+    if (index >= 0) { 
+      this.content.splice(index, 1);
+    }
   }
 
   /**
