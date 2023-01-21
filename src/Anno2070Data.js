@@ -532,7 +532,6 @@ export const LightProfile = {
 }
 
 /**
- * Light profiles used by islands 
  * @typedef {string} Anno2070.Happiness
  * @readonly
  * @enum {string} Anno2070.Happiness

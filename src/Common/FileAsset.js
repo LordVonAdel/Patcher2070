@@ -40,6 +40,7 @@ export default class FileAsset {
    * @param {string} filePath 
    */
   async writeToFile(filePath) {
+    console.log("[File] Writing data for ", filePath);
     const data = await this.writeData();
     await fs.promises.writeFile(filePath, data);
   }
@@ -49,7 +50,7 @@ export default class FileAsset {
    * @param {FileAsset} other Other asset
    */
   async merge(other) {
-    throw new Error("Mergin not supported for this type of asset");
+    throw new Error("Merging not supported for this type of asset");
   }
 
 }

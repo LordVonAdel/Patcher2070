@@ -7,7 +7,7 @@ import { Buffer } from "buffer";
 import FileAsset from "../Common/FileAsset.js";
 
 /**
- * RDM is the file extension for 3D models. It holds mostly geometry data. Metadata about models is saved in .cfg files.
+ * RDM is the file extension for 3D meshes. It holds mostly geometry data. Metadata about models is saved in .cfg files.
  */
 export default class RDMAsset extends FileAsset {
 
