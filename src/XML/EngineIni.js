@@ -1,5 +1,6 @@
 import XMLAsset from "../Common/XMLAsset.js";
 import Path from "path";
+import fs from "fs/promises";
 
 export default class EngineIni extends XMLAsset {
 
@@ -7,6 +8,10 @@ export default class EngineIni extends XMLAsset {
    * @param {EngineIniKey} key 
    */
   getValue(key) {
+    if (!this.xml.hasContent()) {
+      return null;
+    }
+
     return this.xml.findChild("InitFile").getInlineContent(key);
   }
 
@@ -20,6 +25,20 @@ export default class EngineIni extends XMLAsset {
 
   static GetDefaultFilePath() {
     return Path.join(process.env.APPDATA, "Ubisoft/Anno 2070/Config/Engine.ini")
+  }
+
+  static async loadFromDisk() {
+    const path = EngineIni.GetDefaultFilePath();
+    const engineIni = new EngineIni();
+
+    try {
+      await fs.access(path);
+      await engineIni.readFile(path);
+    } catch (_) {
+      
+    }
+
+    return engineIni;
   }
 
  /*
