@@ -3,9 +3,33 @@ import ISDAsset from "../XML/ISDAsset.js";
 import { XMLElement } from "../Common/XMLParser.js";
 
 /**
+ * === World coordinates ===
+ * 
+ * X-               Z+
+ *  ╲               ╱
+ *   ╲             ╱
+ *    ╲           ╱
+ *     X+        Z-
+ * 
+ * one unit is one building cell.
+ */
+
+/**
  * WWWAssets store the game world
  */
 export default class WWWAsset extends XMLAsset {
+
+  constructor() {
+    super();
+
+    this.aiprofiles = null;
+    this.assets = null;
+    this.features = null;
+    this.quests = null;
+    this.texts = null;
+    this.trigger = null; // ABO, ABL
+  }
+
   readData(data) {
     super.readData(data);
     this.xml = this.xml.findChild("WorldConfig");
@@ -50,8 +74,22 @@ export default class WWWAsset extends XMLAsset {
     return islandsData.map(xml => new WorldConfigIsland(xml));
   }
 
-  addIsland(isdFilename, x, y, direction = 0) {
-    
+  /**
+   * @returns {WorldConfigIsland} island
+   */
+  addIsland() {
+    const islands = this.xml.findChild("Islands");
+
+    let index = islands.getChildrenOfType("k").reduce((acc, value) => Math.max(acc, value.getInlineContent()), 0) + 1;
+    const k = new XMLElement("k");
+    k.setInlineContent(index);
+    islands.addChild(k);
+
+    const v = new XMLElement("v");
+    const config = new WorldConfigIsland(v);
+    islands.addChild(v);
+
+    return config;
   }
 
   /**
@@ -72,6 +110,22 @@ export default class WWWAsset extends XMLAsset {
     this.xml.findChild("Areas").addChild(area.xml);
   }
 
+  addArkSlot(x, y) {
+    const arkSlots = this.xml.findChild("ArkSlots");
+    const slot = new XMLElement("i");
+    slot.setInlineContent(x, "x");
+    slot.setInlineContent(y, "y");
+    arkSlots.addChild(slot);
+  }
+
+  /**
+   * @returns {Buffer} content
+   */
+  writeData() {
+    if (!this.xml) throw new Error("Asset not loaded/initialized");
+    return this.xml.toBuffer(false);
+  }
+
 }
 
 export class WorldConfigIsland {
@@ -82,19 +136,21 @@ export class WorldConfigIsland {
    */
   constructor(xml) {
     this.xml = xml;
-    if (!xml.hasContent) {
+    if (!xml.hasContent()) {
       this.generate();
     }
   }
 
   generate() {  
-    this.xml.setInlineContent("hasValue", 1);
+    this.xml.setInlineContent(1, "hasValue");
     const islandConfig = new XMLElement("IslandConfig");
+
+    this.xml.addChild(islandConfig);
     islandConfig.setInlineContent("UnnamedIsland", "Name");
     islandConfig.setInlineContent("", "Filename");
     islandConfig.setInlineContent(0, "Direction");
     islandConfig.setInlineContent(100, "PositionX");
-    islandConfig.setInlineContent(100, "PositionY");
+    islandConfig.setInlineContent(100, "PositionZ");
     islandConfig.setInlineContent(100, "Width");
     islandConfig.setInlineContent(100, "Height");
     islandConfig.setInlineContent(0, "Type");
@@ -103,7 +159,6 @@ export class WorldConfigIsland {
     islandConfig.setInlineContent("", "m_Fertility");
     islandConfig.setInlineContent("North", "LightProfile");
     islandConfig.setInlineContent("", "AutoBuildConfig");
-    this.xml.addChild(islandConfig);
   }
 
   set name(value) { this.xml.findChild("IslandConfig").setInlineContent(value, "Name"); }
@@ -128,7 +183,9 @@ export class WorldConfigIsland {
    * @param {string} filename
    * @param {ISDAsset} isd 
    */
-  assignISDAsset(filename) {
+  assignISDAsset(filename, isd) {
+    // filename = filename.replace(/\//g, "\\");
+
     this.xml.findChild("IslandConfig").setInlineContent(isd.width ,"Width");
     this.xml.findChild("IslandConfig").setInlineContent(isd.height ,"Height");
     this.xml.findChild("IslandConfig").setInlineContent(filename ,"Filename");
