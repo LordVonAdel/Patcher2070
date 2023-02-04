@@ -4,6 +4,26 @@ import GameInterface from "./GameInterface.js";
 export default class StringAPI {
 
   /**
+   * Ranges of txt/names.txt
+   */
+  static Ranges = {
+    "AboveWater": { from: 2310000, to: 2310499 },
+    "UnderWater": { from: 2310500, to: 2310999 },
+    "Ships": { from: 2320000, to: 2322999 },
+    "Airships": {from: 2323000, to: 2325999 },
+    "Submarines": { from: 2326000, to: 2328999 },
+    "Rival": { from: 2300600, to: 2300699 },
+    "Pirates": { from: 2300300, to: 2300399 },
+    "Scientist": { from: 2300200, to: 2300299 },
+    "Supporter": { from: 2300100, to: 2300199 },
+    "OilBaron": { from: 2300000, to: 2300099 },
+    "EcoWarrior": { from: 2300500, to: 2300599 },
+    "Aquanaut": { from: 2300400, to: 2300499 },
+    "PlayerCities": { from: 2310000, to: 2319999 }, // Empty
+    "Vehicles": { from: 2329000, to: 2329999 },   // Empty
+  }
+
+  /**
    * @param {GameInterface} gameInterface 
    */
   constructor(gameInterface) {
@@ -107,13 +127,13 @@ export default class StringAPI {
     if (!this.ranges) {
       this.ranges = [];
       const localFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation.xml"));
-      if (!localFile) throw new Error("No localisation index found!");
+      if (!localFile) throw new Error("No localization index found!");
       await this.fillIndex(localFile.filepath);
     
       // It looks like addon localization overwrites every entry of localization. But we merge it just to be sure and be compatible with eventual pre modded games.
       if (this.gameInterface.isAddonInstalled) {
         const addonLocalFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation_addon.xml"));
-        if (!addonLocalFile) throw new Error("No addon localisation index found!");
+        if (!addonLocalFile) throw new Error("No addon localization index found!");
         await this.fillIndex(addonLocalFile.filepath);
       }
     }
