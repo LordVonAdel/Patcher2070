@@ -18,8 +18,14 @@ export default class Assets extends AssetsAsset{
   getAllBuildings() {
     const assets = this.getAllAssets();
     return assets.filter(asset => asset.Template?.toLowerCase().includes("building"));
-    //const objectsGroup = this.groups.find(g => g.name == "Objects").getSubgroup("Buildings");
-    return objectsGroup.getAssets(true);
+  }
+
+  /**
+   * @returns {Asset[]} Missions defined in this file
+   */
+  getAllMissions() {
+    const assets = this.getAllAssets();
+    return assets.filter(asset => asset.Template?.toLowerCase().includes("mission"));
   }
 
   /**
