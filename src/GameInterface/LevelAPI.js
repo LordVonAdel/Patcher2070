@@ -111,6 +111,11 @@ export default class LevelAPI {
     return new WWWAsset();
   }
 
+  /**
+   * Adds .www and other files via gameinterface. Including aiprofiles, assets, features, quests and texts
+   * @param {WWWAsset} wwwAsset
+   * @param {string} filepath Filepath without extension. ".www" is added automatically
+   */
   async registerWorld(wwwAsset, filepath) {
     filepath = filepath.replace(/\\/g, "/");
     await this.#api.updateFile(wwwAsset.writeData(), filepath + ".www");
