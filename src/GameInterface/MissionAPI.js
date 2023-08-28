@@ -86,6 +86,7 @@ export class Mission {
     mission.setInlineContent(1024, "WorldMapCoordY");
     this.#values.addChild(new XMLElement("MissionBriefing"));
     const gameSettings = this.#values.createChildTag("GameSettings");
+    gameSettings.createChildTag("GameWorld");
     const charList = gameSettings.createChildTag("CharacterList");
     this.#values.addChild(new XMLElement("ScenarioCutscenes"));
     this.#values.addChild(new XMLElement("Reward"));
@@ -132,6 +133,16 @@ export class Mission {
   }
 
   /**
+   * @param {GameWorld} world 
+   */
+    setGameWorld(world) {
+      const element = this.#values.findChild("GameSettings").findChild("GameWorld", 0, true);
+      for (const key in world) {
+        element.setInlineContent(world[key], key);
+      }
+    }
+
+  /**
    * Adds a character to the mission
    * @param {Number} guid 
    * @param {Number} playerId 
@@ -158,4 +169,10 @@ export class Mission {
  * @property {Number} [PlayerArkSlot]
  * @property {String} [StartWithIntermediatelevels] Semicolon separated list of IntermediateLevel
  * @property {Number} [PlayerArkGUID]
+ */
+
+/**
+ * @typedef {Object} GameWorld
+ * @property {"Half"|"Full"} [CostRefund]
+ * @property {"Off"|"Sometimes"|"Standard"|"Often"} [QuestFrequency]
  */
