@@ -3,17 +3,18 @@ import { XMLElement } from "../Common/XMLParser.js";
 
 /**
  * Missions in main menu are hardcoded by GUID. References are in main_menu_mission_overview.dlg.
- * GUIDs of scenarios and missions are present in the exe file in the function at address: 0x140366f20. 
+ * GUIDs of scenarios and missions are present in the exe file in the function at address: 0x140366f20.
  * It is unlikely to be possible to add additional scenarios without modifying the exe file.
  */
 
 /**
  * Because we can't add additional scenarios, we can only overwrite existing ones at the moment.
+ * Order of these elements is not the same as displayed ingame.
  */
 const OverwriteIDS = [
   3261000, // Scenario 01, Single Player
   3261500, // Scenario 02, Single Player
-  3265000, // Scenario 03, Single Player
+  3262000, // Scenario 03, Single Player
   3262500, // Scenario 04, Single Player
   3263000, // Scenario 05, Single Player
   3263500, // Scenario 06, Single Player
@@ -22,7 +23,7 @@ const OverwriteIDS = [
 ];
 
 export default class MissionAPI {
-  
+
   /**
    * @type {GameInterface}
    */
@@ -55,7 +56,7 @@ export default class MissionAPI {
 }
 
 export class Mission {
-  
+
   /**
    * @type {XMLElement}
    */
@@ -84,6 +85,7 @@ export class Mission {
     const mission = this.#values.createChildTag("Mission");
     mission.setInlineContent(2048, "WorldMapCoordX");
     mission.setInlineContent(1024, "WorldMapCoordY");
+    mission.setInlineContent(1, "FactionSelectable");
     this.#values.addChild(new XMLElement("MissionBriefing"));
     const gameSettings = this.#values.createChildTag("GameSettings");
     gameSettings.createChildTag("GameWorld");
@@ -94,6 +96,19 @@ export class Mission {
     // Human player
     const item = charList.createChildTag("Item");
     item.setInlineContent(1, "IsHuman");
+  }
+
+  /**
+   * @param {null|"tycoons"|"ecos"} faction
+   */
+  forceFaction(faction) {
+    this.#xml.findChild("Values").findChild("Mission").setInlineContent(faction == null ? 1 : 0, "FactionSelectable");
+
+    if (faction == "tycoons") {
+      this.setStartConditions({StartWithIntermediatelevels: "IntermediateTycoons"});
+    } else if (faction == "ecos") {
+      this.setStartConditions({StartWithIntermediatelevels: "IntermediateEcos"});
+    }
   }
 
   setShortDescription(guid) {
