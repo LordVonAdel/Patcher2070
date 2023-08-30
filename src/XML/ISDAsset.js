@@ -324,6 +324,9 @@ export default class ISDAsset extends XMLAsset {
     }
   }
 
+  /**
+   * @returns {[[[x,y,direction]]]}
+   */
   getCoastBuildingLines() {
     const out = [];
 
@@ -351,7 +354,7 @@ export default class ISDAsset extends XMLAsset {
   /**
    * @param {[[x, y, direction]]} points 
    */
-  addCoastBuildingLine(points, directions) {
+  addCoastBuildingLine(points) {
     const line = this.xml.findChild("CoastBuildingLines").createChildTag("i");
     const pointsNode = line.createChildTag("Points");
     const directionsNode = line.createChildTag("Directions");
@@ -361,7 +364,11 @@ export default class ISDAsset extends XMLAsset {
       buffer.writeInt32LE(point[0] * (1 << 12), 0);
       buffer.writeInt32LE(point[1] * (1 << 12), 8);
       pointsNode.createChildTag("i").setInlineContent(buffer);
+    }
 
+    // Direction of last point is ignored. The line between two points has the direction of the lower indexed point
+    for (let i = 0; i < points.length - 1; i++) {
+      const point = points[i];
       directionsNode.createChildTag("i").setInlineContent(point[2] * ISDAsset.DIRECTION_MULTIPLIER);
     }
 
