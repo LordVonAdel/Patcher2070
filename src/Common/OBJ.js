@@ -3,6 +3,8 @@ export default class OBJ {
   constructor(name = "object") {
     this.name = name;
     this.vertices = [];
+    this.normals = [];
+    this.uvs = [];
     this.triangles = [];
     this.objects = [];
     this.lines = [];
@@ -11,6 +13,16 @@ export default class OBJ {
   addVertex(x, y, z) {
     this.vertices.push([x, y, z]);
     return this.vertices.length;
+  }
+
+  addNormal(x, y, z) {
+    this.normals.push([x, y, z]);
+    return this.normals.length;
+  }
+
+  addUV(u, v) {
+    this.uvs.push([u, v]);
+    return this.uvs.length;
   }
 
   addLine(index0, index1) {
@@ -44,6 +56,45 @@ export default class OBJ {
 
   toFile() {
     return OBJ.CombineToFile(this);
+  }
+
+  /**
+   * Reads the content of an obj file.
+   * Works only if normals and uvs have same index as vertex.
+   * Works only with single mesh
+   * @ToDo: Test this method
+   * @param {string} str OBJ Formatted string
+   */
+  import(str) {
+    const lines = str.split("\n");
+    for (let line of lines) {
+      const parts = line.split(" ");
+
+      if (parts[0] == "o") {
+        this.name = line.substring(2);
+        continue;
+      }
+
+      if (parts[0] == "v") {
+        this.addVertex(+parts[1], +parts[2], +parts[3]);
+        continue;
+      }
+
+      if (parts[0] == "vn") {
+        this.addNormal(+parts[1], +parts[2], +parts[3]);
+        continue;
+      }
+
+      if (parts[0] == "vt") {
+        this.addUV(+parts[1], +parts[2]);
+        continue;
+      }
+
+      if (parts[0] == "f") {
+        this.addFace(+parts[1].split("/")[0], +parts[2].split("/")[0], +parts[3].split("/")[0]);
+        continue;
+      }
+    }
   }
 
   static CombineToFile(objects) {
