@@ -71,7 +71,7 @@ Player values are integers where the value is the index of the player. 0 = Human
 
 Islands and island containers may be interchangeable as parameters. It is unknown if there is only one container type or if these are specific containers for each type.
 
-#### Aktionen
+#### Actions (Aktionen)
 "Aktion" is german for "action".
 | Aktion | Parameters | Description |
 | ------ | ---------- | ----------- |
@@ -217,7 +217,7 @@ Islands and island containers may be interchangeable as parameters. It is unknow
 | n1533  | action guid, player | Show helper arrow for action in Diplomacy menu |
 | n1534  | island(filepath), (1 = Disable) | Disables harbor feedback for island |
 
-#### Bedingungen
+#### Conditions (Bedingungen)
 "Bedingung" is german for "condition"
 Bedingungen are prepended with `&` (for AND) or `|` (for OR). The prepend is optionally followed by `!` for negation.
 
