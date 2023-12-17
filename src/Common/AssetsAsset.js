@@ -103,7 +103,7 @@ export default class AssetsAsset extends XMLAsset {
    * Creates a new asset and adds it to the group tree
    * @param {AssetGroup} group group to add this to
    * @param {String} name Name of the asset. Developer only, not shown in the final game!
-   * @returns 
+   * @returns
    */
   createAsset(name = null, group = null) {
     if (this.groups.length <= 0) throw new Error("File not initialized");
@@ -120,6 +120,7 @@ export default class AssetsAsset extends XMLAsset {
 
     group.addAsset(asset);
 
+    asset.readonly = false;
     return asset;
   }
 
@@ -134,12 +135,12 @@ export default class AssetsAsset extends XMLAsset {
 
   /**
    * Merges assets from another assets file into this one
-   * @param {AssetsAsset} otherFile 
+   * @param {AssetsAsset} otherFile
    */
   merge(otherFile) {
     const otherGroups = otherFile.getAllGroups();
     const thisGroups = this.getAllGroups();
-    
+
     for (let otherGroup of otherGroups) {
       const thisGroup = thisGroups.find(group => group.path.endsWith(otherGroup.path)) ?? thisGroups[0];
       for (let asset of otherGroup.assets) {
@@ -171,7 +172,7 @@ class AssetGroup {
     if (this.xml.findChild("Groups")) {
       const subGroupsXML = this.xml.findChild("Groups").getChildrenOfType("Group");
       for (let group of subGroupsXML) {
-        this.subGroups.push(new AssetGroup(group, this)); 
+        this.subGroups.push(new AssetGroup(group, this));
       }
     }
 
@@ -212,7 +213,7 @@ class AssetGroup {
   }
 
   /**
-   * @param {Asset} asset 
+   * @param {Asset} asset
    */
   addAsset(asset) {
     this.xml.findChild("Assets", 0, true).addChild(asset.xml);
@@ -220,7 +221,7 @@ class AssetGroup {
   }
 
   /**
-   * @param {Asset} asset 
+   * @param {Asset} asset
    */
   removeAsset(asset) {
     this.xml.findChild("Assets").removeChild(asset.xml);
@@ -248,6 +249,8 @@ class AssetGroup {
  * Represents an ingame asset type
  */
 export class Asset {
+
+  readonly = false;
 
   constructor(group, xml = null) {
     /**
@@ -334,9 +337,9 @@ export class Asset {
   /**
    * @returns {Asset.Values.Nameable}
    */
-   get Nameable() {
+  get Nameable() {
     return this.extractValues("Nameable");
-  } 
+  }
 
   /**
    * @returns {Asset.Values.TradingPrice}
@@ -357,7 +360,7 @@ export class Asset {
    */
   get Influence() {
     return this.extractValues("Influence");
-  } 
+  }
 
   /**
    * Products usage. Also used for monuments
@@ -365,14 +368,21 @@ export class Asset {
    */
   get Factory() {
     return this.extractValues("Factory");
-  } 
+  }
 
   /**
    * @returns {Asset.Values.WareProduction}
    */
   get WareProduction() {
     return this.extractValues("WareProduction");
-  } 
+  }
+
+  /**
+   * @returns {Asset.Values.MobileBuilding}
+   */
+  get MobileBuilding() {
+    return this.extractValues("MobileBuilding");
+  }
 
   /**
    * @returns {Asset.Values.Farm}
@@ -441,7 +451,7 @@ export class Asset {
         result[child.name] = child.getInlineContent();
       }
     }
-  
+
     return createAssetProxy(result);
   }
 }
@@ -493,7 +503,7 @@ class ObjectProperty {
 class BuildCost {
 
   /**
-   * @param {XMLElement} xml 
+   * @param {XMLElement} xml
    */
   constructor(xml) {
     /**
@@ -565,7 +575,7 @@ function createAssetProxy(object) {
     set: (obj, prop, value) => {
       if (prop in obj) {
         obj[prop] = value;
-        return;
+        return true;
       }
 
       obj.xml?.setInlineContent(value, prop);
@@ -602,11 +612,11 @@ function createAssetProxy(object) {
  * @property {OverlapType} [OverlapType]
  * @property {Boolean} [ActiveAtStart]
  * @property {Number} [EcoEffectFadingSpeed]
- * @property {MaintenanceType} [MaintenanceType] 
+ * @property {MaintenanceType} [MaintenanceType]
  */
 
 /**
- * @typedef {Object} Asset.Values.Ship    
+ * @typedef {Object} Asset.Values.Ship
  * @property {Number} [VisionRadius]
  * @property {Number} [DriftArea]
  * @property {Number} [ShipClaimNeeded]
@@ -621,7 +631,7 @@ function createAssetProxy(object) {
 /**
  * @typedef {Object} Asset.Values.Transport
  * @property {Number} [SlotCount]
- * @property {Number} [SlotCapacity] 
+ * @property {Number} [SlotCapacity]
  * @property {Boolean} [Pickup]
  */
 
@@ -739,6 +749,12 @@ function createAssetProxy(object) {
  * @property {RewardCategory} [Category]
  * @property {Number} [TypeName]
  * @property {string} [PreviewPictureThumb]
+ */
+
+/**
+ * @typedef {Object} Asset.Values.MobileBuilding
+ * @property {Number} [RelocationGUID] GUID
+ * @property {Number} [TransportGUID] GUID
  */
 
 /**
