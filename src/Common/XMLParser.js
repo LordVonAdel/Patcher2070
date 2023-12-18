@@ -64,7 +64,7 @@ export default class XMLParser {
           offset = tagOffset;
           break;
         }
-  
+
         [offset, node] = this._readNode(offset);
         outElement.content.push(node);
       } else {
@@ -181,6 +181,7 @@ export class XMLElement {
   }
 
   addChild(element) {
+    if (this.content.includes(element)) return; // XML Element is already content of parent
     this.content.push(element);
   }
 
@@ -190,15 +191,15 @@ export class XMLElement {
 
   removeChild(element) {
     const index = this.content.indexOf(element);
-    if (index >= 0) { 
+    if (index >= 0) {
       this.content.splice(index, 1);
     }
   }
 
   /**
-   * 
+   *
    * @param {string} tagName Non case sensitive tag name
-   * @param {number} index 
+   * @param {number} index
    * @returns {XMLElement|null} Matching element
    */
   findChild(tagName, index = 0, createIfNotFound = false) {
@@ -292,5 +293,17 @@ export class XMLElement {
 
   hasContent() {
     return this.inlineContent || this.content.length > 0;
+  }
+
+  /**
+   * Deep clones all content from this element to target
+   * @param {XMLElement} target
+   */
+  cloneTo(target) {
+    target.clear();
+    target.inlineContent = this.inlineContent;
+    for (const child of this.content) {
+      target.addChild(XMLParser.parse(child.toBuffer(false)).content[0]);
+    }
   }
 }
