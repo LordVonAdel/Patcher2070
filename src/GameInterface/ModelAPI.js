@@ -1,5 +1,6 @@
 import GameInterface from "./GameInterface.js";
 import RDMAsset from "../RDM/RDMAsset.js";
+import CFGAsset from "../XML/CFGAsset.js";
 
 export default class ModelAPI {
 
@@ -17,6 +18,15 @@ export default class ModelAPI {
    */
    async getModelData(filepath) {
     const asset = new RDMAsset();
+    asset.dataFilePath = filepath;
+    const file = await this.api.getGameFile(filepath);
+    asset.readData(file);
+    return asset;
+  }
+
+  async getCFG(filepath) {
+    const asset = new CFGAsset();
+    asset.dataFilePath = filepath;
     const file = await this.api.getGameFile(filepath);
     asset.readData(file);
     return asset;
