@@ -4,13 +4,13 @@ import { XMLElement } from "../Common/XMLParser.js";
 
 /**
  * === World coordinates ===
- * 
+ *
  * X-               Z+
  *  ╲               ╱
  *   ╲             ╱
  *    ╲           ╱
  *     X+        Z-
- * 
+ *
  * one unit is one building cell.
  */
 
@@ -49,6 +49,11 @@ export default class WWWAsset extends XMLAsset {
     return this.xml.setInlineContent(value, "Width");
   }
 
+  isPointInBounds(x, y) {
+    // Probably works only on square maps
+    return (Math.abs(x - this.width / 2) + Math.abs(y - this.height / 2)) < Math.min(this.width / 2, this.height / 2);
+  }
+
   generate() {
     this.xml = new XMLElement("WorldConfig");
     this.height = 100;
@@ -56,13 +61,13 @@ export default class WWWAsset extends XMLAsset {
     this.xml.addChild(new XMLElement("Areas"));
     this.xml.addChild(new XMLElement("ArkSlots"));
 
-    const lightProfiles = new XMLElement("WorldLightProfiles")
+    const lightProfiles = new XMLElement("WorldLightProfiles");
     lightProfiles.addChild(new XMLElement("North"));
     lightProfiles.addChild(new XMLElement("South"));
     lightProfiles.addChild(new XMLElement("UnderwaterNorth"));
     lightProfiles.addChild(new XMLElement("UnderwaterSouth"));
     this.xml.addChild(lightProfiles);
-    
+
     this.xml.addChild(new XMLElement("Islands"));
   }
 
@@ -75,9 +80,10 @@ export default class WWWAsset extends XMLAsset {
   }
 
   /**
+   * @param {{positionX: number, positionZ: number, isdAsset: ISDAsset, isdPath: string, fertilities: string[]}} options
    * @returns {WorldConfigIsland} island
    */
-  addIsland() {
+  addIsland(options = {}) {
     const islands = this.xml.findChild("Islands");
 
     let index = islands.getChildrenOfType("k").reduce((acc, value) => Math.max(acc, value.getInlineContent()), 0) + 1;
@@ -88,6 +94,23 @@ export default class WWWAsset extends XMLAsset {
     const v = new XMLElement("v");
     const config = new WorldConfigIsland(v);
     islands.addChild(v);
+
+    if ("isdPath" in options && "isdAsset" in options) {
+      config.assignISDAsset(options.isdPath, options.isdAsset);
+    }
+
+    if ("positionX" in options) {
+      config.positionX = +options.positionX;
+    }
+
+    if ("positionZ" in options) {
+      config.positionZ = +options.positionZ;
+    }
+
+    if ("fertilities" in options) {
+      config.fertilities = options.fertilities;
+    }
+
 
     return config;
   }
@@ -104,6 +127,7 @@ export default class WWWAsset extends XMLAsset {
    * @param {WorldConfigArea} area 
    */
   addArea(name, polygon) {
+    // @ToDo: Figure out format of polygon
     const area = new WorldConfigArea(new XMLElement("i"));
     area.generate();
     area.name = name;
@@ -111,6 +135,9 @@ export default class WWWAsset extends XMLAsset {
   }
 
   addArkSlot(x, y) {
+    // Arks outside world area will not spawn!
+    if (!this.isPointInBounds(x, y)) throw new Error("Ark slot is out of bounds!");
+
     const arkSlots = this.xml.findChild("ArkSlots");
     const slot = new XMLElement("i");
     slot.setInlineContent(x, "x");
@@ -141,7 +168,7 @@ export class WorldConfigIsland {
     }
   }
 
-  generate() {  
+  generate() {
     this.xml.setInlineContent(1, "hasValue");
     const islandConfig = new XMLElement("IslandConfig");
 
@@ -288,6 +315,6 @@ export class WorldConfigArea {
     const polygon = this.xml.findChild("m_Shape").findChild("Polygon");
     polygon.clear();
 
-
+    // @todo Find out what format polygons use
   }
 }

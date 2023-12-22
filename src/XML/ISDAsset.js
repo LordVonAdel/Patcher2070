@@ -6,15 +6,15 @@ import DDSAsset from "../DDS/DDSAsset.js";
 
 /**
  * ISD files store data about island presets. All islands in Anno are premade and placed into the game world.
- * 
+ *
  * Nothing can be build on terrain under the height of 0.7 units.
- * 
- * Island can't be larger than 512 x 512 because of how the UsedChunks BitGrid is stored. 
- * 
- * 
+ *
+ * Island can't be larger than 512 x 512 because of how the UsedChunks BitGrid is stored.
+ *
+ *
  * Directions:
  * -1: X-
- *  0: Z- 
+ *  0: Z-
  *  1: X+
  *  2: Z+
  */
@@ -131,15 +131,23 @@ export default class ISDAsset extends XMLAsset {
   }
 
   /**
-   * @param {Number} x 
-   * @param {Number} y 
-   * @param {Number} height 
-   * @returns 
+   * @param {Number} x
+   * @param {Number} y
+   * @param {Number} height
    */
   setTerrainHeightAtLocation(x, y, height) {
     if (!this.xml) throw new Error("No data in Island");
-    const targetChunk = this.getChunkAtLocation(x, y);
+
+    let targetChunk = this.getChunkAtLocation(x, y);
     targetChunk.setHeightAtIslandPosition(x, y, height);
+
+    // vertices on a border are stored in multiple chunks
+    targetChunk = this.getChunkAtLocation(x-1, y);
+    targetChunk?.setHeightAtIslandPosition(x, y, height);
+    targetChunk = this.getChunkAtLocation(x-1, y-1);
+    targetChunk?.setHeightAtIslandPosition(x, y, height);
+    targetChunk = this.getChunkAtLocation(x, y-1);
+    targetChunk?.setHeightAtIslandPosition(x, y, height);
   }
 
   /**
@@ -151,9 +159,20 @@ export default class ISDAsset extends XMLAsset {
     for (let chunk of chunks) chunk.clearHeight(height);
   }
 
+  setTerrainHeightRectangle(x0, y0, sizeX, sizeY, height) {
+    let x1 = x0 + sizeX;
+    let y1 = y0 + sizeY;
+
+    for (let x = x0; x < x1; x++) {
+      for (let y = y0; y < y1; y++) {
+        this.setTerrainHeightAtLocation(x, y, height);
+      }
+    }
+  }
+
   /**
    * Applies a heightmap onto the terrain
-   * @param {DDSAsset} map 
+   * @param {DDSAsset} map
    */
   setTerrainFromHeightmap(map, whiteLevel, blackLevel) {
     const range = whiteLevel - blackLevel;
@@ -206,6 +225,13 @@ export default class ISDAsset extends XMLAsset {
     return chunk.getTextureWeightsAtPosition(x - chunk.positionX, y - chunk.positionY);
   }
 
+  setTextureWeightsAtLocation(x, y, weights) {
+    const chunk = this.getChunkAtLocation(x, y);
+    for (let textureIndex in weights) {
+      chunk.setTextureWeightsAtPosition(x - chunk.positionX, y - chunk.positionY, textureIndex, weights[textureIndex]);
+    }
+  }
+
   /**
    * Automatically applies texture weights based on height of terrain
    */
@@ -222,10 +248,14 @@ export default class ISDAsset extends XMLAsset {
    */
   autoCoast() {
     const chunks = this.getAllChunks();
+
     for (let chunk of chunks) {
       if (!chunk.isUsed) continue;
-      
 
+      const lines = chunk.findCoasts();
+      for (let line of lines) {
+        this.addCoastBuildingLine(line);
+      }
     }
   }
 
@@ -255,6 +285,7 @@ export default class ISDAsset extends XMLAsset {
    */
   getChunkAtLocation(x, y) {
     if (!this.xml) throw new Error("No data in Island");
+    if (x < 0 || y < 0) return null;
 
     const terrainNode = this.xml.findChild("Terrain");
     const tilesW = +terrainNode.getInlineContent("TileCountX");
@@ -269,6 +300,10 @@ export default class ISDAsset extends XMLAsset {
 
     const chunkIndexX = Math.floor(x / chunkWidth);
     const chunkIndexY = Math.floor(y / chunkHeight);
+
+    // Islands should be square, so chunksW can be used for both axes
+    if (chunkIndexX > chunksW || chunkIndexY > chunksW) return null;
+
     const chunkIndex = chunkIndexX + chunkIndexY * chunksW;
 
     return new IslandChunk(chunkIndexX, chunkIndexY, chunks[chunkIndex]);
@@ -530,8 +565,9 @@ export default class ISDAsset extends XMLAsset {
   }
 
   recalculate() {
-    this.recalculateHeightMaps(); 
+    this.recalculateHeightMaps();
     this.recalculateUsedChunks();
+    this.recalculateSubmarineBlocker();
   }
 
   recalculateHeightMaps() {
@@ -545,7 +581,7 @@ export default class ISDAsset extends XMLAsset {
 
     const chunks = this.getAllChunks();
     for (const chunk of chunks) {
-      const chunkHeightMap = chunk.getHeightData();      
+      const chunkHeightMap = chunk.getHeightData();
 
       for (let x = 0; x < ISDAsset.CHUNK_SIZE; x++) {
         const chunkX = chunk.chunkIndexX * ISDAsset.CHUNK_SIZE;
@@ -596,6 +632,19 @@ export default class ISDAsset extends XMLAsset {
       usedChunksBuffer.writeUInt32LE(int, y * 4);
     }
     usedChunks.setInlineContent(usedChunksBuffer, "m_BitGrid");
+  }
+
+  recalculateSubmarineBlocker() {
+    const blockerLayer = this.xml.findChild("m_GOPManager").findChild("m_GRIDManager").findChild("m_SubmarineBlockerLayer", 0, true);
+    blockerLayer.setInlineContent(-98304, "SubmarineLevelHeight");
+    blockerLayer.setInlineContent(16384, "SubmarineIslandBlockerRadius");
+    const grid = blockerLayer.findChild("BitGrid", 0, true);
+    grid.setInlineContent(this.width, "m_XSize");
+    grid.setInlineContent(this.height, "m_YSize");
+    grid.setInlineContent(6, "m_IntXSize");
+    const data = Buffer.alloc((this.width * this.height) / 8);
+    data.fill(0xFF);
+    grid.setInlineContent(data, "m_BitGrid");
   }
 
   /**
@@ -663,8 +712,8 @@ export default class ISDAsset extends XMLAsset {
 
   /**
    * Generates an empty island with the given dimensions.
-   * @param {*} width 
-   * @param {*} height 
+   * @param {*} width
+   * @param {*} height
    */
   async generate(width, height) {
     if (width % ISDAsset.CHUNK_SIZE !== 0) throw new Error("Width must be a multiple of " + ISDAsset.CHUNK_SIZE);
@@ -864,8 +913,10 @@ class IslandChunk {
     chunkX /= cellWidth;
     chunkY /= cellWidth;
 
+    if (chunkX < 0 || chunkY < 0 || chunkX >= this.heightMapWidth || chunkY >= this.heightMapWidth) return;
+
     const tileIndex = Math.floor(chunkX) + Math.floor(chunkY) * this.heightMapWidth;
-    return heightData.writeFloatLE(height, tileIndex * 4);
+    heightData.writeFloatLE(height, tileIndex * 4);
   }
 
   clearHeight(height) {
@@ -944,7 +995,7 @@ class IslandChunk {
   setTextureWeightsAtPosition(chunkX, chunkY, textureIndex, weight) {
     const layers = this.xml.getChildrenOfType("TexIndexData");
     const textureLayers = layers.map(xml => new TextureLayer(xml));
-    
+
     let targetLayer = textureLayers.find(layer => layer.index == textureIndex);
     if (!targetLayer) {
       targetLayer = this.generateTextureLayer(textureIndex);
@@ -1055,20 +1106,45 @@ class IslandChunk {
   validate() {
     const mapWidth = this.heightMapWidth;
     if (mapWidth < 0) return true;
-
-    // @Todo Fix validation
-
-    // const layers = this.xml.getChildrenOfType("TexIndexData");
-    // for (const layer of layers) {
-    //   const texLayer = new TextureLayer(layer);
-    //   if (texLayer.width != mapWidth) throw new Error("Texture and height map are not in same scale!!!");
-    // }
   }
 
   unUse() {
     this.xml.setInlineContent(-1, "VertexResolution");
     const hMap = this.xml.findChild("HeightMap");
     if (hMap) this.xml.removeChild(hMap);
+  }
+
+  /**
+   * Find Building lines
+   * @returns {[[Number, Number, Number]]}
+   */
+  findCoasts() {
+    const out = [[], [], [], []];
+    const bufferHeight = this.getHeightData();
+    const buildHeight = 0.5;
+    const gridSize = this.heightMapWidth - 1;
+
+    //                  Z-       X+      Z+      X-
+    const directions = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+
+    for (let d = 0; d < directions.length; d++) {
+      const dir = directions[d];
+
+      for (let i = 0; i < gridSize; i++) {
+        let last = buildHeight;
+        let pos = -1;
+
+        for (let j = 0; j < gridSize; j++) {
+          const h = bufferHeight.readFloatLE((i * gridSize + j) * 4);
+          if (h > buildHeight && last < buildHeight) pos = j;
+          last = h;
+        }
+
+        if (pos >= 0) out[d].push([(pos / gridSize) * ISDAsset.CHUNK_SIZE + this.positionX, (i / gridSize) * ISDAsset.CHUNK_SIZE +  + this.positionY, 0]);
+      }
+    }
+
+    return out.filter(a => a.length > 0);
   }
 }
 
