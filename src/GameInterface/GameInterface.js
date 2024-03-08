@@ -16,6 +16,10 @@ import ModelAPI from './ModelAPI.js';
 import MissionAPI from './MissionAPI.js';
 import TexturesAPI from './TexturesAPI.js';
 
+/**
+ * @todo find out why engine.ini is sometimes cleared
+ */
+
 export default class GameInterface {
 
   // Private fields
@@ -63,7 +67,7 @@ export default class GameInterface {
     /**
      * @type {StringAPI}
      */
-    this.stringAPI = new StringAPI(this); 
+    this.stringAPI = new StringAPI(this);
 
     /**
      * @type {IconsAPI}
@@ -101,7 +105,7 @@ export default class GameInterface {
     await this.buildFileIndex();
 
     const engineIni = await this.getEngineIni();
-    this.installedLanguage = engineIni.getValue("LanguageTAG");
+    this.installedLanguage = engineIni.getValue("LanguageTAG") || "en";
     if (!this.installedLanguage) throw new Error("Can't detect installed language!");
   }
 
@@ -128,7 +132,7 @@ export default class GameInterface {
 
     // Move patch files to end, so they override base files.
     baseFiles.push(...patchFiles);
-    for (let filepath of baseFiles) {      
+    for (let filepath of baseFiles) {
       const rda = new RDAAsset();
       RDACache[filepath.replace(".backup", "")] = rda;
 
@@ -143,11 +147,15 @@ export default class GameInterface {
 
       this.indexRDAAsset(rda, filepath);
     }
-
-    this.isAddonInstalled = baseFiles.some(filename => filename.includes("addon0.rda"));
   }
 
   indexRDAAsset(asset, filepath) {
+    if (filepath.includes("addon0.rda")) {
+      this.isAddonInstalled = true;
+    }
+
+    console.log("indexing", filepath);
+
     const rdaIndex = asset.getIndex();
     const rdaFilepath = filepath.replace(".backup", "");
 
@@ -271,24 +279,15 @@ export default class GameInterface {
   }
 
   /**
-   * Applies all files marked as modified to the game. 
-   * Warning: This function modifies installation files of the game!
-   * 
-   * Option to overwrite all occurrences of a file in the game, because I am not sure if the game picks always the "newest" file.
-   * 
-   * @param {boolean} patchMaindata Overwrite main file instead of just editing Patch9 ?
+   * Apply all unsaved modifications before patching
    */
-  async patch(patchMaindata = false) {
+  async patchInMemory(patchMaindata = false) {
     if (this.#assets) {
       this.fileIndex["data/config/game/assets.xml"].updateContent(this.#assets.writeData());
     }
-    
+
     if (this.#properties) {
       this.fileIndex["data/config/game/properties.xml"].updateContent(this.#properties.writeData());
-    }
-
-    if (this.#engineIni) {
-      this.#engineIni.writeToFile(EngineIni.GetDefaultFilePath());
     }
 
     const patch9 = Path.join(this.gameDirectory, "maindata", "patch9.rda");
@@ -296,10 +295,10 @@ export default class GameInterface {
     const modifiedRDAs = {};
     for (let k in this.fileIndex) {
       const file = this.fileIndex[k];
-      if (!file.isModified) continue; 
-      
+      if (!file.isModified) continue;
+
       const allRDA = patchMaindata ? (file.allRDAs ?? [patch9]) : [patch9];
-      
+
       for (let rda of allRDA) {
         if (rda in modifiedRDAs) {
           modifiedRDAs[rda].push(file);
@@ -308,6 +307,24 @@ export default class GameInterface {
         }
       }
     }
+
+    return modifiedRDAs;
+  }
+
+  /**
+   * Applies all files marked as modified to the game.
+   * Warning: This function modifies installation files of the game!
+   *
+   * Option to overwrite all occurrences of a file in the game, because I am not sure if the game picks always the "newest" file.
+   *
+   * @param {boolean} patchMaindata Overwrite main file instead of just editing Patch9 ?
+   */
+  async patch(patchMaindata = false) {
+    if (this.#engineIni) {
+      this.#engineIni.writeToFile(EngineIni.GetDefaultFilePath());
+    }
+
+    const modifiedRDAs = await this.patchInMemory(patchMaindata);
 
     for (let rdaPath in modifiedRDAs) {
       const rda = new RDAAsset();
