@@ -1,26 +1,10 @@
-import ZLib from 'zlib';
+import Pako from "pako";
 
 export function Compress(data, options = {}) {
   options.level = 5;
-  return new Promise((resolve, reject) => {
-    ZLib.deflate(data, options, (err, result) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(result);
-      }
-    });
-  });
+  return Buffer.from(Pako.deflate(data, options));
 }
 
-export async function Decompress(data) {
-  return new Promise((resolve, reject) => {
-    ZLib.inflate(data, (err, result) => {
-      if (err) {
-        reject(err);
-      } else {
-        resolve(result);
-      }
-    });
-  });
+export function Decompress(data) {
+  return Buffer.from(Pako.inflate(data));
 }

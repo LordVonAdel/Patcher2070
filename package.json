@@ -8,9 +8,11 @@
   "license": "MIT",
   "private": true,
   "dependencies": {
-    "dxtn": "^1.0.0"
+    "dxtn": "^1.0.0",
+    "pako": "^2.1.0"
   },
-  "scripts":{
-    "test": "node ./test/fullCoverage.js"
+  "scripts": {
+    "test": "node ./test/fullCoverage.js",
+    "profile": "node --prof ./index.js"
   }
 }

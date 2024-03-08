@@ -1,5 +1,5 @@
 /**
- * Sources: 
+ * Sources:
  * https://github.com/lysannschlegel/RDAExplorer/wiki/RDA-File-Format
  * https://github.com/lysannschlegel/AnnoRDA
  * https://github.com/lysannschlegel/RDAExplorer/blob/master/src/RDAExplorer/RDAReader.cs#L199
@@ -7,7 +7,6 @@
 import { Buffer } from "buffer";
 import { Decrypt, Encrypt } from "./Encryption.js";
 import { Compress, Decompress } from "./Compression.js";
-import Zlib from "zlib";
 import FileAsset from "../Common/FileAsset.js";
 
 const magicV20 = Buffer.from([0x52, 0x00, 0x65, 0x00, 0x73, 0x00, 0x6F, 0x00, 0x75, 0x00, 0x72, 0x00, 0x63, 0x00, 0x65, 0x00, 0x20, 0x00, 0x46, 0x00, 0x69, 0x00, 0x6C, 0x00, 0x65, 0x00, 0x20, 0x00, 0x56, 0x00, 0x32, 0x00, 0x2E, 0x00, 0x30, 0x00]);
@@ -158,7 +157,7 @@ export default class RDAAsset extends FileAsset {
       const blockBuffer = await block.write(options)
       out = Buffer.concat([out, blockBuffer]);
       out.writeUInt32LE(out.length - 20, lastHeaderOffsetOffset);
-      lastHeaderOffsetOffset = out.length - 4;      
+      lastHeaderOffsetOffset = out.length - 4;
     }
 
     return out;
@@ -262,9 +261,9 @@ class RDABlock {
     if (this.isEncrypted) {
       fileHeadersBuffer = Decrypt(fileHeadersBuffer, 0xA2C2A );
     }
-    
+
     if (this.isCompressed) {
-      fileHeadersBuffer = Zlib.inflateSync(fileHeadersBuffer);
+      fileHeadersBuffer = Decompress(fileHeadersBuffer);
     }
 
     for (let i = 0; i < numberOfFiles; i++) {
@@ -288,7 +287,7 @@ class RDABlock {
     }
 
     if (this.isCompressed) {
-      chunk = Zlib.inflateSync(chunk);
+      chunk = Decompress(chunk);
     }
 
     return chunk;
@@ -418,11 +417,11 @@ class RDAFile {
         data = Decrypt(data, 0xA2C2A);
       }
       if (this.isCompressed) {
-        data = Zlib.inflateSync(data);
+        data = Decompress(data);
       }
       this.content = data;
       return data;
-    } 
+    }
 
     const chunk = this.block.getFileChunk();
     const data = chunk.slice(this.offset, this.offset + this.uncompressedSize);
