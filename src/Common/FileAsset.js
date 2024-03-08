@@ -6,6 +6,8 @@ import fs from 'fs';
  */
 export default class FileAsset {
 
+  dataFilePath = null;
+
   /**
    * @param {Buffer} data 
    */
@@ -15,7 +17,7 @@ export default class FileAsset {
 
   /**
    * Reads a file and loads its content into this asset object.
-   * @param {string} filePath 
+   * @param {string} filePath
    */
   async readFile(filePath) {
     const data = await fs.promises.readFile(filePath);
@@ -37,7 +39,7 @@ export default class FileAsset {
   }
 
   /**
-   * @param {string} filePath 
+   * @param {string} filePath
    */
   async writeToFile(filePath) {
     console.log("[File] Writing data for ", filePath);

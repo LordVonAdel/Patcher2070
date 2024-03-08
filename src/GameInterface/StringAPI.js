@@ -55,7 +55,6 @@ export default class StringAPI {
    * Adds a string to the game and returns its GUID
    * @param {Object<LangID, string>} texts Text to have in the game
    * @param {LangID} defaultLanguage Language to use if no translation for the target language exists
-   * @returns {Number} GUID
    * @throws Will throw an error if no GUIDs are free
    */
   async addString(texts, defaultLanguage = "eng") {
@@ -129,7 +128,7 @@ export default class StringAPI {
       const localFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation.xml"));
       if (!localFile) throw new Error("No localization index found!");
       await this.fillIndex(localFile.filepath);
-    
+
       // It looks like addon localization overwrites every entry of localization. But we merge it just to be sure and be compatible with eventual pre modded games.
       if (this.gameInterface.isAddonInstalled) {
         const addonLocalFile = await this.gameInterface.findGameFile(file => file.filepath.endsWith("localisation_addon.xml"));

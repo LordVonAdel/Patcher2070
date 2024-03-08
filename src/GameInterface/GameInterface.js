@@ -105,7 +105,7 @@ export default class GameInterface {
     await this.buildFileIndex();
 
     const engineIni = await this.getEngineIni();
-    this.installedLanguage = engineIni.getValue("LanguageTAG") || "en";
+    this.installedLanguage = engineIni.getValue("LanguageTAG") || "eng";
     if (!this.installedLanguage) throw new Error("Can't detect installed language!");
   }
 

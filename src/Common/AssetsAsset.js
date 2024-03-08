@@ -109,19 +109,30 @@ export default class AssetsAsset extends XMLAsset {
     if (this.groups.length <= 0) throw new Error("File not initialized");
     if (!name) name = "js_" + (nextAutomatedAssetIndex++);
 
-    const asset = new Asset(group);
+    const asset = new Asset();
     asset.Standard.Name = name;
     asset.Standard.Creator = "Anno2070js";
     asset.Standard.CreationTime = (new Date()).toISOString().split('T')[0];
     asset.Standard.LastChangeUser = "Anno2070js";
     asset.Standard.LastChangeTime = asset.Standard.CreationTime;
 
+    // Add to group
     if (!group) group = this.groups[0];
-
     group.addAsset(asset);
 
     asset.readonly = false;
     return asset;
+  }
+
+  /**
+   * @param {Asset} asset
+   */
+  cloneAsset(source) {
+    const target = this.createAsset(null, source.group);
+    target.readonly = false;
+    source.xml.cloneTo(target.xml);
+    target.Standard.Name = source.Standard.Name + " (cloned)";
+    return target;
   }
 
   getGroup(path) {
@@ -160,6 +171,9 @@ class AssetGroup {
       xml.addChild(new XMLElement("Groups"));
     }
 
+    /**
+     * @type {XMLElement}
+     */
     this.xml = xml;
     this.parent = parent;
     this.subGroups = [];
@@ -179,7 +193,7 @@ class AssetGroup {
     if (this.xml.findChild("Assets")) {
       const assets = this.xml.findChild("Assets").getChildrenOfType("Asset");
       for (let asset of assets) {
-        this.assets.push(new Asset(this, asset));
+        this.addAsset(new Asset(asset))
       }
     }
 
@@ -218,6 +232,7 @@ class AssetGroup {
   addAsset(asset) {
     this.xml.findChild("Assets", 0, true).addChild(asset.xml);
     this.assets.push(asset);
+    asset.group = this;
   }
 
   /**
@@ -252,22 +267,24 @@ export class Asset {
 
   readonly = false;
 
-  constructor(group, xml = null) {
-    /**
-     * @type {AssetGroup}
-     */
-    this.group = group;
+  /**
+   * @type {AssetGroup}
+   */
+  group = null;
 
+  constructor(xml = null) {
     if (!xml) {
       xml = new XMLElement("Asset");
     }
 
-    this.xml = xml;
-
     /**
      * @type {XMLElement}
      */
-    this.values = this.xml.findChild("Values", 0, true);
+    this.xml = xml;
+  }
+
+  get values() {
+    return this.xml.findChild("Values", 0, true);
   }
 
   /**
@@ -395,7 +412,7 @@ export class Asset {
    * @returns {BuildCost}
    */
   get BuildCost() {
-    return createAssetProxy(new BuildCost(this.values.findChild("BuildCost")));
+    return createAssetProxy(new BuildCost(this.values.findChild("BuildCost", 0, true)));
   }
 
   /**
@@ -440,17 +457,24 @@ export class Asset {
     return this.extractValues("Reward");
   }
 
+  /**
+   * @returns {Asset.Values.Selection}
+   */
+  get Selection() {
+    return this.extractValues("Selection");
+  }
+
   extractValues(category) {
     const values = this.values.findChild(category, 0, !this.readonly);
     const result = {
       xml: values
     };
 
-    if (values) {
-      for (let child of values.content) {
-        result[child.name] = child.getInlineContent();
-      }
-    }
+    // if (values) {
+    //   for (let child of values.content) {
+    //     result[child.name] = child.getInlineContent();
+    //   }
+    // }
 
     return createAssetProxy(result);
   }
@@ -478,7 +502,7 @@ class ObjectProperty {
   getVariations() {
     const variations = this.xml.findChild("Variations");
     if (variations) {
-      return variations.getChildrenOfType("Item").map(item => item.getInlineContent("Filename"));
+      return variations.getChildrenOfType("Item").map(item => item.getInlineContent("Filename").replaceAll("\\", "/"));
     }
     return [];
   }
@@ -490,7 +514,7 @@ class ObjectProperty {
     const variations = this.xml.findChild("Variations", 0, true);
     variations.clear();
     for (const item of items) {
-      variations.createChildTag("Item").setInlineContent(item);
+      variations.createChildTag("Item").setInlineContent(item.replaceAll("/", "\\"), "Filename");
     }
   }
 }
@@ -513,11 +537,11 @@ class BuildCost {
   }
 
   /**
-   * @param {ResourceCost} resource Name of the resource
+   * @param {PlayerResource} resource Name of the resource
    * @param {Number} amount Amount needed of that resource
    */
   setResourceCost(resource, amount) {
-    this.xml.findChild("ResourceCost").setInlineContent(amount, resource);
+    this.xml.findChild("ResourceCost", 0, true).setInlineContent(amount, resource);
   }
 
   /**
@@ -525,14 +549,14 @@ class BuildCost {
    * @returns {Number}
    */
   getResourceCost(resource) {
-    return Number(this.xml.findChild("ResourceCost")?.getInlineContent(resource));
+    return Number(this.xml.findChild("ResourceCost", 0, true)?.getInlineContent(resource));
   }
 
   /**
    * @param {Product} Product name
    */
   setProductCosts(product, amount) {
-    this.xml.findChild("ProductCost").setInlineContent(amount * 1000, product);
+    this.xml.findChild("ProductCost", 0, true).setInlineContent(amount * 1000, product);
   }
 
   /**
@@ -753,8 +777,13 @@ function createAssetProxy(object) {
 
 /**
  * @typedef {Object} Asset.Values.MobileBuilding
- * @property {Number} [RelocationGUID] GUID
+ * @property {Number} [RelocationGUID] GUID of the thing placed by the player after initaiting relocation
  * @property {Number} [TransportGUID] GUID
+ */
+
+/**
+ * @typedef {Object} Asset.Values.Selection
+ * @property {GUIType} [GUIType]
  */
 
 /**

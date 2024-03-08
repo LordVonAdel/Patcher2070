@@ -50,7 +50,7 @@ export default class DDSAsset extends FileAsset {
   }
 
   /**
-   * @param {Buffer} data 
+   * @param {Buffer} data
    */
   readData(data) {
     if (data[0] != 0x44 || data[1] != 0x44 || data[2] != 0x53 || data[3] != 0x20) throw new Error("Invalid magic number");
@@ -153,8 +153,8 @@ export default class DDSAsset extends FileAsset {
   }
 
   /**
-   * @param {Number} x 
-   * @param {Number} y 
+   * @param {Number} x
+   * @param {Number} y
    * @returns {Color}
    */
   sample(u, v) {
@@ -166,10 +166,10 @@ export default class DDSAsset extends FileAsset {
   }
 
   /**
-   * @param {number} x 
-   * @param {number} y 
-   * @param {number} width 
-   * @param {number} height 
+   * @param {number} x
+   * @param {number} y
+   * @param {number} width
+   * @param {number} height
    * @returns {DDSAsset}
    */
   getRegion(x, y, width, height) {

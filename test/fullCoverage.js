@@ -7,22 +7,20 @@ import RDAAsset from '../src/RDA/RDAAsset.js';
 import RDMAsset from '../src/RDM/RDMAsset.js';
 import DDSAsset from '../src/DDS/DDSAsset.js';
 import ISDAsset from '../src/XML/ISDAsset.js';
+import CDFAsset from '../src/GUI/CDFAsset.js';
 
-const contentFolderFilePath = 'F:\\SteamLibrary\\steamapps\\common\\Anno 2070\\maindata';
+const contentFolderFilePath = 'D:\\SteamLibrary\\steamapps\\common\\Anno 2070\\maindata';
 const stats = {
-  modelsParsed: 0,
-  modelsFailed: 0,
   rdaParsed: 0,
-  rdaFailed: 0,
-  islandsParsed: 0,
-  islandsFailed: 0,
-  ddsParsed: 0,
-  ddsFailed: 0
-}
-
-const showOnlyFails = false;
+  rdaFailed: 0
+};
 
 fs.readdir(contentFolderFilePath, async (err, files) => {
+  if (err) {
+    console.error(err);
+    return;
+  }
+
   for (let file of files) {
     if (file.includes(".backup")) continue;
     await testRDA(path.join(contentFolderFilePath, file));
@@ -32,6 +30,7 @@ fs.readdir(contentFolderFilePath, async (err, files) => {
 
 const fileTypeTests = {
   "RDM": {
+    ignore: true,
     extension: ".rdm",
     test(data) {
       const rdm = new RDMAsset();
@@ -39,7 +38,7 @@ const fileTypeTests = {
     }
   },
   "ISD": {
-    ignore: true,
+    ignore: false,
     extension: ".isd",
     test(data) {
       const isd = new ISDAsset();
@@ -47,15 +46,26 @@ const fileTypeTests = {
     }
   },
   "DDS": {
+    ignore: true,
     extension: ".dds",
     test(data) {
       const asset = new DDSAsset();
+      asset.readData(data);
+    }
+  },
+  "CDF": {
+    ignore: true,
+    extension: ".cdf",
+    test(data) {
+      const asset = new CDFAsset();
       asset.readData(data);
     }
   }
 }
 
 async function testRDA(path) {
+  if (path.endsWith("checksums.rda")) return;
+
   const reader = new RDAAsset();
   try {
     console.log("=== Reading file: " + path + " ===");
@@ -74,7 +84,7 @@ async function testRDA(path) {
       const files = index.filter(entry => entry.endsWith(test.extension));
       for (const file of files) {
         try {
-          const data = reader.extractFile(file);
+          const data = await reader.extractFile(file);
           test.test(data);
           stats[validStat]++;
         } catch (e) {

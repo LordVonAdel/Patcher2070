@@ -8,15 +8,15 @@ const maps = ["Diffuse", "Normal", "Height", "Mask", "Ripples"];
 export async function ExtractModel(rda, modelPath, outDir) {
   const asset = new RDMAsset();
 
-  const cfgRaw = rda.extractFile(modelPath);
+  const cfgRaw = await rda.extractFile(modelPath);
   const xmlParser = new XMLParser();
   const cfg = xmlParser.parse(cfgRaw);
 
   const modelConfig = cfg.findChild("m_Config").findChild("m_Models").findChild("m_Config");
   const rdmFile = modelConfig.getInlineContent("m_FileName");
   const materials = modelConfig.findChild("m_Materials").getChildrenOfType("m_Config");
-  
-  asset.readData(rda.extractFile(rdmFile));
+
+  asset.readData(await rda.extractFile(rdmFile));
 
   for (let i = 0; i < materials.length; i++) {
     let material = materials[i];
@@ -62,7 +62,7 @@ export async function ExtractModel(rda, modelPath, outDir) {
 
       if (!filename) continue;
       const localFileName = path.basename(filename);
-      await fs.promises.writeFile(path.join(outDir, localFileName), rda.extractFile(filename));
+      await fs.promises.writeFile(path.join(outDir, localFileName), await rda.extractFile(filename));
 
       assetMaterial[map.toLowerCase() + "Map"] = localFileName;
     }
