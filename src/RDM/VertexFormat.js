@@ -212,12 +212,23 @@ function singleScale(x) {
  * https://devblogs.microsoft.com/dotnet/introducing-the-half-type/#:~:text=A%20Half%20can%20be%20converted,the%20inverse%20is%20not%20true.
  * https://en.wikipedia.org/wiki/Half-precision_floating-point_format
  **/
-function halfToFloat(x) {
-  const fraction = (x & 0b00000011_11111111) / 1024;
-  const exponent = ((x & 0b01111100_00000000) >> 10) - 15;
-  const sign = (x & 0b10000000_00000000) >> 15;
-  const implicitBit = fraction != 0;
-  return (implicitBit + fraction) * Math.pow(2, exponent) * Math.pow(-1, sign);
+
+/**
+ * Converts 16 bit float to a number.
+ * Uses Copilot voodoo!
+ * @param {number} half integer representing the float value
+ * @returns the number as a float
+ */
+function halfToFloat(half) {
+  const sign = (half & 0x8000) >> 15;
+  const exponent = (half & 0x7C00) >> 10;
+  const fraction = half & 0x03FF;
+  if(exponent === 0) {
+      return (sign?-1:1) * Math.pow(2, -14) * (fraction / Math.pow(2, 10));
+  } else if(exponent === 0x1F) {
+      return fraction?NaN:((sign?-1:1)*Infinity);
+  }
+  return (sign?-1:1) * Math.pow(2, exponent - 15) * (1 + fraction / Math.pow(2, 10));
 }
 
 function floatToHalf(x) {
