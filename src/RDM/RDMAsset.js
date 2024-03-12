@@ -152,7 +152,7 @@ export default class RDMAsset extends FileAsset {
     this.vertexFormat = VertexFormat.getBySize(vertexSize);
     for (let i = 0; i < vertexNumber; i++) {
       const offset = offsetVertices + i * vertexSize;
-      const vertex = this.vertexFormat.read(data.slice(offset, offset + vertexSize));
+      const vertex = this.vertexFormat.read(data.subarray(offset, offset + vertexSize));
       this.vertices.push(vertex);
     }
 
@@ -311,40 +311,70 @@ export default class RDMAsset extends FileAsset {
         }
       }
     }
+
+    // Just always use Position, Normal, Texcoord, Unknown when encoding custom model
+    this.vertexFormat = VertexFormat.getBySize(20);
   }
 
   writeData() {
-    const blocks = [];
+    let writeHead = 0;
 
-    this.vertexFormat = VertexFormat.getBySize(20);
+    /**
+     * @type {Buffer[]}
+     */
+    const buffers = [];
+
+    function allocateBlock(count, size, generateHead = true) {
+      if (generateHead) {
+        const bufferHead = Buffer.alloc(8);
+        writeHead += bufferHead.length;
+        bufferHead.writeUInt32LE(count, 0);
+        bufferHead.writeUInt32LE(size, 4);
+        buffers.push(bufferHead);
+      }
+      const globalOffset = writeHead;
+
+      const bufferContent = Buffer.alloc(count * size);
+      writeHead += bufferContent.length;
+      buffers.push(bufferContent);
+      return {buffer: bufferContent, offset: globalOffset};
+    }
 
     // Header
-    const header = Buffer.alloc(0x14);
-    header.write("RDM", 0);
-    header[0x03] = 0x01;
-    header[0x04] = 0x14;
-    header[0x0C] = 0x04;
-    header[0x10] = 0x1C;
+    const header = allocateBlock(1, 0x14, false);
+    header.buffer.write("RDM", 0);
+    header.buffer[0x03] = 0x01;
+    header.buffer[0x04] = 0x14;
+    header.buffer[0x0C] = 0x04;
+    header.buffer[0x10] = 0x1C;
 
-    const block0 = Buffer.alloc(0x30);
-    block0.writeUInt32LE(0x54, 0x00); // offset to filenames
-    block0.writeUInt32LE(0xff, 0x04); // offset to geometry offsets
-    blocks.push({num: 1, content: block0});
+    const header2 = allocateBlock(1, 0x30, true);
 
-    const blockIDK = Buffer.alloc(48); // 0x1C
-    const blockIDK2 = Buffer.alloc(72);
-    const blockIDK3 = Buffer.alloc(28); // 0x1C + 0x08
+    const header3 = allocateBlock(1, 0x48, true);
+    header2.buffer.writeUInt32LE(header3.offset, 0x00);
 
-    const blockOffsets = Buffer.alloc(68);
+    const offsetsBlock = allocateBlock(1, 48, true);
+    header2.buffer.writeUInt32LE(offsetsBlock.offset, 0x04);
 
-    const blockTriangles = Buffer.alloc(this.triangles.length * 12);
-    const blockVertices = Buffer.alloc(this.vertices.length * this.vertexFormat.size);
-    const blockMaterials = Buffer.alloc(12);
+    const block0 = allocateBlock(1, 28, true);
+    const block1 = allocateBlock(1, 24, true);
+    const block2 = allocateBlock(1, 20, true);
+
+    const blockVertices = allocateBlock(this.vertices.length, this.vertexFormat.size);
+    const blockTriangles = allocateBlock(this.triangles.length, 12);
+    const blockMaterials = allocateBlock(this.materials.length, 12);
+
+    offsetsBlock.buffer.writeUInt32LE(block0.offset, 0); // offsets 0
+    offsetsBlock.buffer.writeUInt32LE(block1.offset, 4); // offsets 1
+    offsetsBlock.buffer.writeUInt32LE(block2.offset, 8); // offsets 2
+    offsetsBlock.buffer.writeInt32LE(blockVertices.offset, 12);
+    offsetsBlock.buffer.writeInt32LE(blockTriangles, 16);
+    offsetsBlock.buffer.writeInt32LE(blockMaterials, 20);
 
     for (let i = 0; i < this.triangles.length; i++) {
-      blockTriangles.writeUInt32LE(this.triangles[i][0], i * 12);
-      blockTriangles.writeUInt32LE(this.triangles[i][1], i * 12 + 4);
-      blockTriangles.writeUInt32LE(this.triangles[i][2], i * 12 + 8);
+      blockTriangles.buffer.writeUInt32LE(this.triangles[i][0], i * 12);
+      blockTriangles.buffer.writeUInt32LE(this.triangles[i][1], i * 12 + 4);
+      blockTriangles.buffer.writeUInt32LE(this.triangles[i][2], i * 12 + 8);
     }
 
     for (let i = 0; i < this.vertices.length; i++) {
@@ -352,13 +382,9 @@ export default class RDMAsset extends FileAsset {
       this.vertexFormat.write(blockVertices, vert, i * this.vertexFormat.size);
     }
 
-    for (const block of blocks) {
-      const blockIndex = Buffer.alloc(8);
-      blockIndex.writeUInt32LE(block.num, 0);
-      blockIndex.writeUInt32LE(block.content.length, 4);
-
-    }
+    return Buffer.concat(buffers);
   }
+
 }
 
 class RDMMaterial {
