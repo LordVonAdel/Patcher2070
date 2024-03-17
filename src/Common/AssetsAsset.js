@@ -692,7 +692,7 @@ function createAssetProxy(object) {
 /**
  * @typedef {Object} Asset.Values.Building
  * @property {"TechsRuin"|"Techs1"|"Techs2"|"Techs3"|"EcosRuin"|"Ecos1"|"Ecos2"|"Ecos3"|"Ecos4"|"TycoonsRuin"|"Tycoons1"|"Tycoons2"|"Tycoons3"|"Tycoons4"} [BuildingLevel]
- * @property {"Markethouse"|"PublicBuilding"|"HarbourMaster"|"Pier"|"StoreHouse"|"NoBuildingType"|"Special"|"MissileLauncher"|"SimpleProduction"|"Support"|"Military"} [BuildingType]
+ * @property {BuildingType} [BuildingType]
  * @property {Number} [WorkerCount]
  * @property {Number} [BuildSound]
  * @property {Boolean} [NeedsStreetHighlights]

@@ -16,16 +16,20 @@ export default class Assets extends AssetsAsset{
    * @returns {Asset[]} Buildings defined in this file
    */
   getAllBuildings() {
-    const assets = this.getAllAssets();
-    return assets.filter(asset => asset.Template?.toLowerCase().includes("building"));
+    return this.getAllByTemplate("building");
   }
 
   /**
    * @returns {Asset[]} Missions defined in this file
    */
   getAllMissions() {
+    return this.getAllByTemplate("mission");
+  }
+
+  getAllByTemplate(template) {
+    const temp = template.toLowerCase();
     const assets = this.getAllAssets();
-    return assets.filter(asset => asset.Template?.toLowerCase().includes("mission"));
+    return assets.filter(asset => asset.Template?.toLowerCase().includes(temp));
   }
 
   /**
