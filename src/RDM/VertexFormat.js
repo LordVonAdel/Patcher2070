@@ -102,10 +102,15 @@ const AttributeTangentUInt8 = {
   name: "tangent",
   read: (data, offset) => {
     return [
-      data.readUInt8(offset),
-      data.readUInt8(offset + 1),
-      data.readUInt8(offset + 2)
-    ]
+      (data.readUInt8(offset) * 2 / 255) - 1,
+      (data.readUInt8(offset + 1) * 2 / 255) - 1,
+      (data.readUInt8(offset + 2) * 2 / 255) - 1
+    ];
+  },
+  write: (data, offset, value) => {
+    data.writeUInt8(Math.round((value[0] + 1) * 127), offset);
+    data.writeUInt8(Math.round((value[1] + 1) * 127), offset + 1);
+    data.writeUInt8(Math.round((value[2] + 1) * 127), offset + 2);
   }
 };
 
@@ -114,10 +119,15 @@ const AttributeBitangentUInt8 = {
   name: "bitangent",
   read: (data, offset) => {
     return [
-      data.readUInt8(offset),
-      data.readUInt8(offset + 1),
-      data.readUInt8(offset + 2)
-    ]
+      (data.readUInt8(offset) * 2 / 255) - 1,
+      (data.readUInt8(offset + 1) * 2 / 255) - 1,
+      (data.readUInt8(offset + 2) * 2 / 255) - 1
+    ];
+  },
+  write: (data, offset, value) => {
+    data.writeUInt8(Math.round((value[0] + 1) * 127), offset);
+    data.writeUInt8(Math.round((value[1] + 1) * 127), offset + 1);
+    data.writeUInt8(Math.round((value[2] + 1) * 127), offset + 2);
   }
 };
 
@@ -232,27 +242,15 @@ function halfToFloat(half) {
 }
 
 function floatToHalf(x) {
-    // Code generated using ChatGPT
-
-    // Ensure the float value is within the representable range of half-precision
-    if (x > 65504.0) x = 65504.0;
-    if (x < -65504.0) x = -65504.0;
-
-    // Extract the sign, exponent, and mantissa bits from the float
-    const view = new DataView(new ArrayBuffer(4));
-    view.setFloat32(0, x, true);
-    const floatBits = view.getUint32(0, true);
-    const signBit = (floatBits & 0x80000000) >> 16; // Sign bit
-    const exponentBits = (floatBits & 0x7F800000) >> 23; // Exponent bits
-    const mantissaBits = floatBits & 0x007FFFFF; // Mantissa bits
-
-    // Convert to half-precision format
-    const halfSign = signBit >> 15;
-    const halfExponent = exponentBits - 112;
-    const halfMantissa = (mantissaBits >> 13) & 0x03FF;
-
-    // Combine the bits into a half-precision value
-    const halfValue = (halfSign << 15) | (halfExponent << 10) | halfMantissa;
-
-    return halfValue;
+  let sign = (x < 0) ? 1 : 0;
+  let f = Math.abs(x);
+  let exp = Math.floor(Math.log2(f));
+  if (exp > 15) {
+      exp = 15;
+  } else if (exp < -14) {
+      exp = -14;
+  }
+  let frac = f / Math.pow(2, exp) - 1;
+  let half = (sign << 15) | ((exp + 15) << 10) | (Math.round(frac * 1024) & 0x3FF);
+  return half;
 }
