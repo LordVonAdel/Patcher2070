@@ -316,6 +316,9 @@ export default class RDMAsset extends FileAsset {
     this.vertexFormat = VertexFormat.getBySize(20);
   }
 
+  /**
+   * @returns {Buffer}
+   */
   writeData() {
     let writeHead = 0;
 
@@ -340,6 +343,13 @@ export default class RDMAsset extends FileAsset {
       return {buffer: bufferContent, offset: globalOffset};
     }
 
+    function allocateString(value) {
+      const buffer = Buffer.from(value, "utf8");
+      writeHead += buffer.length;
+      buffers.push(buffer);
+      return writeHead - buffer.length;
+    }
+
     // Header
     const header = allocateBlock(1, 0x14, false);
     header.buffer.write("RDM", 0);
@@ -350,6 +360,7 @@ export default class RDMAsset extends FileAsset {
 
     const header2 = allocateBlock(1, 0x30, true);
 
+    // (0x1C + 0x00)
     const header3 = allocateBlock(1, 0x48, true);
     header2.buffer.writeUInt32LE(header3.offset, 0x00);
 
@@ -379,8 +390,10 @@ export default class RDMAsset extends FileAsset {
 
     for (let i = 0; i < this.vertices.length; i++) {
       const vert = this.vertices[i];
-      this.vertexFormat.write(blockVertices, vert, i * this.vertexFormat.size);
+      this.vertexFormat.write(blockVertices.buffer, vert, i * this.vertexFormat.size);
     }
+
+    header3.buffer.writeUInt32LE(allocateString(this.metadata.originalModelPath), 0);
 
     return Buffer.concat(buffers);
   }
